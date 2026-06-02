@@ -1,0 +1,98 @@
+name: Release CRVI-GRC
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri'
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with: { node-version: 22, cache: 'npm' }
+
+      - run: npm ci
+
+      - name: Build Tauri app
+        run: npm run tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+
+      - name: Sign bundles for updater
+        shell: pwsh
+        run: |
+          $exePath = (Get-ChildItem "src-tauri\target\release\bundle\nsis\*_x64-setup.exe" | Select-Object -First 1).FullName
+          $msiPath = (Get-ChildItem "src-tauri\target\release\bundle\msi\*_x64_en-US.msi" | Select-Object -First 1).FullName
+          if ($exePath) { Write-Host "Signing $exePath"; npm exec -- tauri signer sign --password "" $exePath }
+          if ($msiPath) { Write-Host "Signing $msiPath"; npm exec -- tauri signer sign --password "" $msiPath }
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+
+      - name: Create latest.json
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $exePath = Get-ChildItem -Path "src-tauri\target\release\bundle\nsis\*_x64-setup.exe" | Select-Object -First 1
+          $msiPath = Get-ChildItem -Path "src-tauri\target\release\bundle\msi\*_x64_en-US.msi" | Select-Object -First 1
+
+          $exeSig = ""
+          $msiSig = ""
+          if (Test-Path "$($exePath.FullName).sig") {
+            $exeSig = Get-Content "$($exePath.FullName).sig" -Raw
+          }
+          if (Test-Path "$($msiPath.FullName).sig") {
+            $msiSig = Get-Content "$($msiPath.FullName).sig" -Raw
+          }
+
+          $latestJson = @{
+            version = $version
+            notes = "Release $version"
+            pub_date = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = @{}
+          }
+
+          if ($exePath) {
+            $latestJson.platforms["windows-x86_64"] = @{
+              url = "https://github.com/VoxSake/crvi-bdd/releases/download/${{ github.ref_name }}/$($exePath.Name)"
+              signature = $exeSig
+            }
+          }
+          if ($msiPath) {
+            $latestJson.platforms["windows-x86_64-msi"] = @{
+              url = "https://github.com/VoxSake/crvi-bdd/releases/download/${{ github.ref_name }}/$($msiPath.Name)"
+              signature = $msiSig
+            }
+          }
+
+          $latestJson | ConvertTo-Json -Depth 10 | Set-Content -Path "latest.json" -Encoding UTF8
+          Write-Host "Created latest.json:"
+          Get-Content "latest.json"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "CRVI-GRC ${{ github.ref_name }}"
+          body: "Release ${{ github.ref_name }}"
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: false
+          files: |
+            src-tauri/target/release/bundle/nsis/*_x64-setup.exe
+            src-tauri/target/release/bundle/msi/*_x64_en-US.msi
+            src-tauri/target/release/bundle/nsis/*_x64-setup.exe.sig
+            src-tauri/target/release/bundle/msi/*_x64_en-US.msi.sig
+            latest.json

@@ -1,0 +1,27 @@
+name: Build CRVI-GRC
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri'
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with: { node-version: 22, cache: 'npm' }
+
+      - run: npm ci
+
+      - name: Build Tauri app
+        run: npm run tauri build

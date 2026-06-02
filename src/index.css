@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: oklch(0.975 0.012 85);
+  --color-foreground: oklch(0.28 0.03 250);
+  --color-card: oklch(0.995 0.006 85);
+  --color-card-foreground: oklch(0.28 0.03 250);
+  --color-primary: oklch(0.55 0.15 255);
+  --color-primary-foreground: oklch(0.985 0.004 85);
+  --color-secondary: oklch(0.75 0.12 185);
+  --color-secondary-foreground: oklch(0.985 0.004 85);
+  --color-muted: oklch(0.952 0.014 82);
+  --color-muted-foreground: oklch(0.5 0.02 248);
+  --color-accent: oklch(0.84 0.08 28);
+  --color-accent-foreground: oklch(0.28 0.03 248);
+  --color-destructive: oklch(0.577 0.245 27.325);
+  --color-border: oklch(0.88 0.02 82);
+  --color-ring: oklch(0.55 0.15 255);
+  --radius: 0.625rem;
+  --font-sans: system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, monospace;
+}
+
+* { @apply border-border; }
+body {
+  @apply bg-background text-foreground font-sans antialiased;
+  background-image:
+    radial-gradient(circle at 0% 0%, oklch(0.92 0.035 82 / 0.55), transparent 38%),
+    radial-gradient(circle at 100% 0%, oklch(0.92 0.03 235 / 0.28), transparent 36%);
+}
+
+.dark body {
+  background-image:
+    radial-gradient(circle at 10% 10%, oklch(0.36 0.045 248 / 0.18), transparent 35%),
+    radial-gradient(circle at 90% 90%, oklch(0.34 0.035 220 / 0.16), transparent 40%);
+}
+
+::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: oklch(0.952 0.014 82 / 0.3);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(0.5 0.02 248 / 0.35);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.5 0.02 248 / 0.55);
+}
