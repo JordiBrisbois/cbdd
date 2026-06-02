@@ -1,6 +1,6 @@
 [package]
 name = "crvi-grc"
-version = "1.0.6"
+version = "1.0.7"
 description = "CRVI - Gestion de la Relation Contact"
 authors = ["Jordi Brisbois"]
 license = "MIT"
