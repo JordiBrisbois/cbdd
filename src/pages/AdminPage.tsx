@@ -16,7 +16,7 @@ import type {
 import { invoke, Modal } from "../lib/utils";
 import { useAuth } from "../lib/auth";
 
-const DEFAULT_UPDATE_ENDPOINT = "https://github.com/VoxSake/crvi-bdd/releases/latest/download/latest.json";
+const DEFAULT_UPDATE_ENDPOINT = "https://github.com/JordiBrisbois/cbdd/releases/latest/download/latest.json";
 
 const EMPTY_USER: UserInput = {
   username: "",

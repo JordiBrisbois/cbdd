@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "CRVI-GRC",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "identifier": "com.crvi.grc",
   "build": {
     "frontendDist": "../dist",
@@ -27,7 +27,7 @@
   },
   "plugins": {
     "updater": {
-      "endpoints": ["https://github.com/VoxSake/crvi-bdd/releases/latest/download/latest.json"],
+      "endpoints": ["https://github.com/JordiBrisbois/cbdd/releases/latest/download/latest.json"],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlENThGRUIzQ0VERUMwRkMKUldUOHdON09zLzVZbmJ6amZhNTNJcTVxS1p2aHBTWlBWUVY5eVpISnZhTjBFMnhNZ2F3NGE3T3IK"
     }
   },

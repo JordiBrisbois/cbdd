@@ -128,7 +128,7 @@ Chaque commande Rust vérifie automatiquement les permissions via `auth::require
 ### Cloner et installer
 
 ```bash
-git clone https://github.com/VoxSake/crvi-bdd.git
+git clone https://github.com/JordiBrisbois/cbdd.git
 cd crvi-bdd
 npm install
 ```

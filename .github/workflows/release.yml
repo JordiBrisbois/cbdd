@@ -66,13 +66,13 @@ jobs:
 
           if ($exePath) {
             $latestJson.platforms["windows-x86_64"] = @{
-              url = "https://github.com/VoxSake/crvi-bdd/releases/download/${{ github.ref_name }}/$($exePath.Name)"
+              url = "https://github.com/JordiBrisbois/cbdd/releases/download/${{ github.ref_name }}/$($exePath.Name)"
               signature = $exeSig
             }
           }
           if ($msiPath) {
             $latestJson.platforms["windows-x86_64-msi"] = @{
-              url = "https://github.com/VoxSake/crvi-bdd/releases/download/${{ github.ref_name }}/$($msiPath.Name)"
+              url = "https://github.com/JordiBrisbois/cbdd/releases/download/${{ github.ref_name }}/$($msiPath.Name)"
               signature = $msiSig
             }
           }
