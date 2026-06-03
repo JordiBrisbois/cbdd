@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Modal } from "../lib/utils";
+import { Modal } from "../components/Modal";
 import { Icon } from "../lib/ui";
 
 export type TableExportScope = "current" | "raw";

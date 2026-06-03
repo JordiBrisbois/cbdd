@@ -87,7 +87,7 @@ export function useColumnOrder(tableId: string, defaultOrder: string[]) {
 
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(orderedKeys));
-  }, [tableId, orderedKeys]);
+  }, [storageKey, orderedKeys]);
 
   const moveColumn = useCallback((fromIndex: number, toIndex: number) => {
     setOrderedKeys(prev => {

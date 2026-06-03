@@ -2,7 +2,14 @@ import type { ReactNode } from "react";
 import { useRef, useMemo, useCallback } from "react";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { useColumnVisibility, useStickyColumn, useColumnOrder, useColumnWidths } from "../lib/columns";
-import { ColumnToggle, ScrollIndicators, ScrollGradients, FloatingScrollBar, FloatingScrollIndicators, usePagination, useTableScroll, useStickyOffsets, useSort, SortHeader, stickyCol, extractText } from "../lib/utils";
+import { ColumnToggle } from "./table/ColumnToggle";
+import { ScrollIndicators, ScrollGradients, FloatingScrollBar, FloatingScrollIndicators } from "./table/ScrollControls";
+import { SortHeader } from "./table/SortHeader";
+import { usePagination } from "../hooks/usePagination";
+import { useTableScroll } from "../hooks/useTableScroll";
+import { useSort } from "../hooks/useSort";
+import { useStickyOffsets, stickyCol } from "../lib/tableLayout";
+import { extractText } from "../lib/text";
 
 export interface TableConfig {
   id: string;

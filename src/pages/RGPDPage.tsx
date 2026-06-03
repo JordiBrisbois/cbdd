@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import type { Categorie, Personne, PersonneRefusBDDPresence } from "../types";
-import { invoke } from "../lib/utils";
+import { invoke } from "../lib/tauri";
 import { Icon } from "../lib/ui";
 import { DataTable, type TableConfig } from "../components/DataTable";
 import toast from "react-hot-toast";
@@ -59,7 +59,7 @@ export function RGPDPage() {
     [items, refusalIds]
   );
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     const [rgpd, refus, cats] = await Promise.all([
       invoke<Personne[]>("get_personnes_rgpd").catch(() => []),
@@ -70,9 +70,8 @@ export function RGPDPage() {
     setRefusBDD(refus);
     setCategories(cats);
     setLoading(false);
-  };
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { load(); }, []);
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const anonymiser = async (id: number) => {
     if (!canAnonymize) return;

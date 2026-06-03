@@ -2,7 +2,10 @@ import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import type { Personne, PersonneInput, Categorie, AffiliationAvecDetails, Structure, Fonction } from "../types";
 import { useAuth } from "../lib/auth";
-import { invoke, Modal, normalizeLastNameInput, useEditLock } from "../lib/utils";
+import { invoke } from "../lib/tauri";
+import { Modal } from "../components/Modal";
+import { normalizeLastNameInput } from "../lib/format";
+import { useEditLock } from "../hooks/useEditLock";
 import { Icon, Label, Field } from "../lib/ui";
 import { AffiliationModal } from "./AffiliationModal";
 
@@ -61,7 +64,7 @@ export function ContactModal({ personne, onClose, categories }: { personne: Pers
           setDuplicatePerson(existing[0]);
           return;
         }
-      } catch (e) { /* ignorer, on laisse sauvegarder */ }
+      } catch { /* ignorer, on laisse sauvegarder */ }
     }
 
     try {

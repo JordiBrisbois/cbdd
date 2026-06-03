@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import type { Categorie, Personne, PersonneCategorieDetaillee, Structure } from "../types";
-import { invoke, formatCivilite, GroupedCell, exportTableFile, formatValuesForMail, splitDelimitedValues } from "../lib/utils";
+import { invoke } from "../lib/tauri";
+import { formatCivilite } from "../lib/format";
+import { GroupedCell } from "../components/Modal";
+import { exportTableFile } from "../lib/export";
+import { formatValuesForMail, splitDelimitedValues } from "../lib/text";
 import { getExportConfig } from "../lib/columns";
 import { Icon } from "../lib/ui";
 import { DataTable, type TableConfig } from "../components/DataTable";
@@ -80,7 +84,6 @@ export function CategoriesPage() {
       });
   }, []);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (!selectedCat) {
       setContacts([]);

@@ -1,7 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import toast from "react-hot-toast";
 import type { Reunion, PresenceAvecDetails, Personne, ReunionInput, Structure } from "../types";
-import { invoke, Modal, fullName, exportTableFile, useEditLock } from "../lib/utils";
+import { invoke } from "../lib/tauri";
+import { Modal } from "../components/Modal";
+import { fullName } from "../lib/format";
+import { exportTableFile } from "../lib/export";
+import { useEditLock } from "../hooks/useEditLock";
 import { Icon, Label, Field } from "../lib/ui";
 import { TableExportModal, type TableExportFormat, type TableExportScope } from "../components/TableExportModal";
 import { useAuth } from "../lib/auth";
@@ -72,13 +76,13 @@ export function ReunionModal({ reunion, onClose }: { reunion: Reunion; onClose: 
     return [nom, prenom].filter(Boolean).join(" ") || fullName(personne);
   };
 
-  const loadPresences = () => {
+  const loadPresences = useCallback(() => {
     if (reunion.id_reunion && canReadPresences) {
       invoke<PresenceAvecDetails[]>("lister_presences_reunion", { reunionId: reunion.id_reunion }).then(setPresences).catch((e) => toast.error(String(e)));
     }
-  };
+  }, [canReadPresences, reunion.id_reunion]);
 
-  useEffect(() => { loadPresences(); }, [reunion.id_reunion]);
+  useEffect(() => { loadPresences(); }, [loadPresences]);
   useEffect(() => {
     if (!canReadStructures) return;
     invoke<Structure[]>("lister_structures").then(setStructures).catch((e) => toast.error(String(e)));

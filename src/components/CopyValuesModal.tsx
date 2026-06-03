@@ -1,6 +1,7 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
-import { copyText, Modal } from "../lib/utils";
+import { copyText } from "../lib/text";
+import { Modal } from "../components/Modal";
 
 export interface CopyOption {
   id: string;

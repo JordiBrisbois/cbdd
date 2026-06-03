@@ -1,4 +1,7 @@
 use super::*;
+use crate::auth;
+use crate::db;
+use tauri::AppHandle;
 
 fn ensure_presets_table(conn: &rusqlite::Connection) -> Result<(), String> {
     conn.execute(
@@ -17,7 +20,7 @@ fn ensure_presets_table(conn: &rusqlite::Connection) -> Result<(), String> {
     Ok(())
 }
 
-pub fn lister_presets(app: AppHandle) -> Result<Vec<Preset>, String> {
+pub fn lister_presets_impl(app: AppHandle) -> Result<Vec<Preset>, String> {
     let conn = db::get_conn(&app)?;
     auth::require_permission(&conn, "presets.read")?;
     ensure_presets_table(&conn)?;
@@ -46,7 +49,7 @@ pub fn lister_presets(app: AppHandle) -> Result<Vec<Preset>, String> {
     Ok(result)
 }
 
-pub fn sauvegarder_preset(app: AppHandle, preset: PresetInput) -> Result<Preset, String> {
+pub fn sauvegarder_preset_impl(app: AppHandle, preset: PresetInput) -> Result<Preset, String> {
     let conn = db::get_conn(&app)?;
     auth::require_permission(
         &conn,
@@ -91,7 +94,7 @@ pub fn sauvegarder_preset(app: AppHandle, preset: PresetInput) -> Result<Preset,
     }
 }
 
-pub fn supprimer_preset(app: AppHandle, id: i64) -> Result<(), String> {
+pub fn supprimer_preset_impl(app: AppHandle, id: i64) -> Result<(), String> {
     let conn = db::get_conn(&app)?;
     auth::require_permission(&conn, "presets.delete")?;
     ensure_presets_table(&conn)?;
@@ -103,7 +106,7 @@ pub fn supprimer_preset(app: AppHandle, id: i64) -> Result<(), String> {
     Ok(())
 }
 
-pub fn charger_preset(app: AppHandle, id: i64) -> Result<Preset, String> {
+pub fn charger_preset_impl(app: AppHandle, id: i64) -> Result<Preset, String> {
     let conn = db::get_conn(&app)?;
     auth::require_permission(&conn, "presets.read")?;
     ensure_presets_table(&conn)?;

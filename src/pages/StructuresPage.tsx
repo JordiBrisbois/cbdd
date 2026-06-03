@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import type { Structure, Categorie, Personne, Fonction } from "../types";
-import { invoke, exportTableFile } from "../lib/utils";
+import { invoke } from "../lib/tauri";
+import { exportTableFile } from "../lib/export";
 import { getExportConfig } from "../lib/columns";
 import { Icon } from "../lib/ui";
 import { DataTable, type TableConfig } from "../components/DataTable";
@@ -35,14 +36,13 @@ export function StructuresPage() {
     void invoke<Fonction[]>("lister_fonctions").then(setFonctions).catch((e) => toast.error(String(e)));
   }, []);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     const s = await invoke<Structure[]>("lister_structures", { recherche: search || undefined }).catch(() => []);
     setItems(s);
     setLoading(false);
-  };
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { load(); }, [search]);
+  }, [search]);
+  useEffect(() => { load(); }, [load]);
 
   const config: TableConfig = useMemo(() => ({
     id: "structures",
@@ -98,7 +98,7 @@ export function StructuresPage() {
         renderers={{
           nom: (item) => <span className="font-medium">{(item.nom_structure as string) || "—"}</span>,
           categorie: (item) => {
-            const catId = (item as any).id_categorie as number | undefined;
+            const catId = (item as Record<string, unknown>).id_categorie as number | undefined;
             return <span className="text-muted-foreground">{catId ? (catMap[catId] || "—") : "—"}</span>;
           },
           service: (item) => <span className="text-muted-foreground">{(item.service_specifique as string) || "—"}</span>,

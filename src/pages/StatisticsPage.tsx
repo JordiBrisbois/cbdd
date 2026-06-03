@@ -7,7 +7,9 @@ import type {
   StatsParticipation,
   StatsTopMeeting,
 } from "../types";
-import { exportWorkbook, formatDate, invoke } from "../lib/utils";
+import { exportWorkbook } from "../lib/export";
+import { formatDate } from "../lib/format";
+import { invoke } from "../lib/tauri";
 import { Icon } from "../lib/ui";
 
 function formatMonthLabel(value: string) {
@@ -96,7 +98,10 @@ function DonutChartCard({
   colors: string[];
 }) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
-  let offset = 0;
+  const segments = data.map((item) => total > 0 ? (item.value / total) * 264 : 0);
+  const offsets = segments.map((_, index) =>
+    segments.slice(0, index).reduce((sum, segment) => sum + segment, 0)
+  );
   return (
     <div className="rounded-2xl border bg-card p-4 shadow-sm">
       <div className="mb-4">
@@ -108,8 +113,8 @@ function DonutChartCard({
           <svg viewBox="0 0 120 120" className="size-40 -rotate-90">
             <circle cx="60" cy="60" r="42" fill="none" stroke="hsl(var(--muted))" strokeWidth="16" />
             {data.map((item, index) => {
-              const segment = total > 0 ? (item.value / total) * 264 : 0;
-              const circle = (
+              const segment = segments[index];
+              return (
                 <circle
                   key={`${item.key}-${index}`}
                   cx="60"
@@ -119,12 +124,10 @@ function DonutChartCard({
                   stroke={colors[index % colors.length]}
                   strokeWidth="16"
                   strokeDasharray={`${segment} 264`}
-                  strokeDashoffset={-offset}
+                  strokeDashoffset={-offsets[index]}
                   strokeLinecap="round"
                 />
               );
-              offset += segment;
-              return circle;
             })}
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center">

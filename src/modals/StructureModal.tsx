@@ -2,7 +2,9 @@ import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import type { Structure, StructureInput, Categorie, AffiliationAvecDetails, Personne, Fonction } from "../types";
 import { useAuth } from "../lib/auth";
-import { invoke, Modal, useEditLock } from "../lib/utils";
+import { invoke } from "../lib/tauri";
+import { Modal } from "../components/Modal";
+import { useEditLock } from "../hooks/useEditLock";
 import { Field, Label, Icon } from "../lib/ui";
 import { AffiliationModal } from "./AffiliationModal";
 
@@ -78,7 +80,7 @@ export function StructureModal({
           setDuplicateStructure(existing[0]);
           return;
         }
-      } catch (e) { /* ignorer */ }
+      } catch { /* ignorer */ }
     }
 
     doSave();

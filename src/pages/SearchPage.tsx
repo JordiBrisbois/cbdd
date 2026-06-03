@@ -1,7 +1,9 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import type { ReactNode } from "react";
-import type { AffiliationAvecDetails, Categorie, Condition, Fonction, Personne, Preset, Reunion, Structure } from "../types";
-import { invoke, exportTableFile, formatValuesForMail, splitDelimitedValues } from "../lib/utils";
+import type { Categorie, Condition, Fonction, Personne, Preset, Structure } from "../types";
+import { invoke } from "../lib/tauri";
+import { exportTableFile } from "../lib/export";
+import { formatValuesForMail, splitDelimitedValues } from "../lib/text";
 import { Icon, Label } from "../lib/ui";
 import { DataTable, type TableConfig } from "../components/DataTable";
 import { TableExportModal, type TableExportFormat, type TableExportScope } from "../components/TableExportModal";
@@ -11,68 +13,18 @@ import { StructureModal } from "../modals/StructureModal";
 import { ReunionModal } from "../modals/ReunionModal";
 import { AffiliationModal } from "../modals/AffiliationModal";
 import toast from "react-hot-toast";
-import { useAuth } from "../lib/auth";
 
-const QB_FIELDS = [
-  { alias: "p", table: "Personnes", fields: [
-    { key: "p.Nom", label: "Nom" }, { key: "p.Prenom", label: "Prénom" }, { key: "p.Civilite", label: "Civilité" },
-    { key: "p.Email_Prive", label: "Email privé" }, { key: "p.Telephone_Prive", label: "Téléphone privé" },
-    { key: "p.Adresse_Privee", label: "Adresse" }, { key: "p.Code_Postal_Prive", label: "Code postal" },
-    { key: "p.Commune_Privee", label: "Commune" }, { key: "p.Pays", label: "Pays" },
-    { key: "p.Statut_Compte", label: "Statut" }, { key: "p.Consentement_RGPD", label: "RGPD" },
-    { key: "p.Date_Consentement", label: "Date consentement" }, { key: "p.Notes_Commentaires", label: "Notes" },
-    { key: "p.Date_Creation", label: "Date création" },
-  ]},
-  { alias: "s", table: "Structures", fields: [
-    { key: "s.Nom_Structure", label: "Nom" },
-    { key: "s.Service_Specifique", label: "Service" }, { key: "s.Reseau_Subvention", label: "Réseau subvention" },
-    { key: "s.Partenaire_Direct", label: "Partenaire direct" }, { key: "s.Adresse_Structure", label: "Adresse" },
-    { key: "s.Code_Postal_Structure", label: "Code postal" }, { key: "s.Commune_Structure", label: "Commune" },
-    { key: "s.Pays", label: "Pays" }, { key: "s.Telephone_General", label: "Téléphone" },
-    { key: "s.Email_General", label: "Email" }, { key: "s.Site_Web", label: "Site web" },
-    { key: "s.Notes_Commentaires", label: "Notes" },
-  ]},
-  { alias: "a", table: "Affiliations", fields: [
-    { key: "a.Titre_Specifique", label: "Titre spécifique" }, { key: "a.Service_Specifique", label: "Service" },
-    { key: "a.Email_Professionnel", label: "Email professionnel" }, { key: "a.Telephone_Direct", label: "Téléphone direct" },
-    { key: "a.Gsm_Professionnel", label: "GSM professionnel" }, { key: "a.Date_Debut", label: "Date début" },
-    { key: "a.Date_Fin", label: "Date fin" }, { key: "a.Notes_Commentaires", label: "Notes" },
-  ]},
-  { alias: "c", table: "Catégories", fields: [
-    { key: "c.Nom_Categorie", label: "Nom catégorie" },
-  ]},
-  { alias: "f", table: "Fonctions", fields: [
-    { key: "f.Libelle_Fonction", label: "Libellé fonction" },
-  ]},
-  { alias: "r", table: "Réunions", fields: [
-    { key: "r.Titre_Reunion", label: "Titre" }, { key: "r.Date_Reunion", label: "Date" },
-    { key: "r.Heure_Reunion", label: "Heure" }, { key: "r.Lieu_Reunion", label: "Lieu" },
-    { key: "r.Notes_Commentaires", label: "Notes" },
-  ]},
-  { alias: "pr", table: "Présences", fields: [
-    { key: "pr.Statut_Presence", label: "Statut" }, { key: "pr.Souhaite_Rester_En_BDD", label: "Reste en BDD" },
-    { key: "pr.Notes_Commentaires", label: "Notes" },
-  ]},
-];
-
-const QB_TABLES = [
-  { key: "personnes", label: "Personnes", alias: "p" }, { key: "structures", label: "Structures", alias: "s" },
-  { key: "affiliations", label: "Affiliations", alias: "a" }, { key: "reunions", label: "Réunions", alias: "r" },
-  { key: "presences", label: "Présences", alias: "pr" },
-];
-
-const QB_OPERATORS = [
-  { key: "=", label: "=" }, { key: "!=", label: "≠" }, { key: ">", label: ">" }, { key: "<", label: "<" },
-  { key: ">=", label: "≥" }, { key: "<=", label: "≤" }, { key: "LIKE", label: "contient" },
-  { key: "commence_par", label: "commence par" }, { key: "finit_par", label: "finit par" },
-  { key: "IS NULL", label: "est vide" }, { key: "IS NOT NULL", label: "n'est pas vide" },
-  { key: "is_duplicate", label: "est un doublon" }, { key: "is_not_duplicate", label: "est unique" },
-  { key: "in_list", label: "dans la liste" }, { key: "not_in_list", label: "pas dans la liste" },
-  { key: "between", label: "entre" },
-];
+import { QB_FIELDS, QB_TABLES, QB_OPERATORS } from "../lib/queryBuilderConfig";
+import { useOpenEntity } from "../hooks/useOpenEntity";
 
 export function SearchPage() {
-  const { can } = useAuth();
+  const {
+    selectedPersonne, setSelectedPersonne,
+    selectedStructure, setSelectedStructure,
+    selectedReunion, setSelectedReunion,
+    selectedAffiliation, setSelectedAffiliation,
+    openResult,
+  } = useOpenEntity();
   const [selectedTable, setSelectedTable] = useState("personnes");
   const [selectedCols, setSelectedCols] = useState<string[]>([]);
   const [conditions, setConditions] = useState<Condition[]>([]);
@@ -88,16 +40,12 @@ export function SearchPage() {
   const [structures, setStructures] = useState<Structure[]>([]);
   const [personnes, setPersonnes] = useState<Personne[]>([]);
   const [fonctions, setFonctions] = useState<Fonction[]>([]);
-  const [selectedPersonne, setSelectedPersonne] = useState<Personne | null>(null);
-  const [selectedStructure, setSelectedStructure] = useState<Structure | null>(null);
-  const [selectedReunion, setSelectedReunion] = useState<Reunion | null>(null);
-  const [selectedAffiliation, setSelectedAffiliation] = useState<AffiliationAvecDetails | null>(null);
 
-  const loadPresets = async () => {
+  const loadPresets = useCallback(async () => {
     const p = await invoke<Preset[]>("lister_presets").catch(() => []);
     setPresets(p);
-  };
-  useEffect(() => { loadPresets(); }, []);
+  }, []);
+  useEffect(() => { loadPresets(); }, [loadPresets]);
   useEffect(() => {
     void invoke<Categorie[]>("lister_categories").then(setCategories).catch(() => setCategories([]));
     void invoke<Structure[]>("lister_structures").then(setStructures).catch(() => setStructures([]));
@@ -134,7 +82,10 @@ export function SearchPage() {
   };
 
   const mainAlias = QB_TABLES.find(t => t.key === selectedTable)?.alias || "p";
-  const allFields = QB_FIELDS.flatMap(g => g.fields.map(f => ({ ...f, group: g.table, alias: g.alias })));
+  const allFields = useMemo(
+    () => QB_FIELDS.flatMap(g => g.fields.map(f => ({ ...f, group: g.table, alias: g.alias }))),
+    [],
+  );
   const availableFields = allFields.filter(f => f.alias === mainAlias || ["c", "f", "a", "s", "p", "pr", "r"].includes(f.alias));
 
   const toggleCol = (key: string) => setSelectedCols(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
@@ -181,7 +132,7 @@ export function SearchPage() {
       key: key.split('.').pop()!,
       label: allFields.find(f => f.key === key)?.label || key,
     })),
-    [selectedCols],
+    [allFields, selectedCols],
   );
 
   const sortAccessors = useMemo(() => {
@@ -222,44 +173,6 @@ export function SearchPage() {
     const columnKey = fieldKey.split(".").pop()!;
     const values = results.flatMap((row) => splitDelimitedValues(row[columnKey]));
     return formatValuesForMail(values);
-  };
-
-  const openResult = async (item: Record<string, unknown>) => {
-    const entity = String(item._entity ?? "");
-    const id = Number(item._id ?? 0);
-    if (!entity || !id) return;
-
-    try {
-      if (entity === "p" && can("personnes.read")) {
-        const personne = await invoke<Personne>("get_personne", { id });
-        setSelectedPersonne(personne);
-        return;
-      }
-      if (entity === "s" && can("structures.read")) {
-        const structure = await invoke<Structure>("get_structure", { id });
-        setSelectedStructure(structure);
-        return;
-      }
-      if (entity === "r" && can("reunions.read")) {
-        const reunion = await invoke<Reunion>("get_reunion", { id });
-        setSelectedReunion(reunion);
-        return;
-      }
-      if (entity === "a" && can("affiliations.read")) {
-        const affiliation = await invoke<AffiliationAvecDetails>("get_affiliation", { id });
-        setSelectedAffiliation(affiliation);
-        return;
-      }
-      if (entity === "pr" && can("reunions.read")) {
-        const reunionId = Number(item._reunion_id ?? 0);
-        if (reunionId) {
-          const reunion = await invoke<Reunion>("get_reunion", { id: reunionId });
-          setSelectedReunion(reunion);
-        }
-      }
-    } catch (error) {
-      toast.error(String(error));
-    }
   };
 
   return (

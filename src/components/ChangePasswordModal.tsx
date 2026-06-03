@@ -1,6 +1,7 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
-import { invoke, Modal } from "../lib/utils";
+import { invoke } from "../lib/tauri";
+import { Modal } from "./Modal";
 
 export function ChangePasswordModal({
   onClose,

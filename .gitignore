@@ -10,6 +10,7 @@ db_path.txt
 .env.*
 *.local
 .tauri/keys
+.commandcode/
 .bak*
 portable/
 DONOTPUSH/

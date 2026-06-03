@@ -2,7 +2,10 @@ import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import type { AffiliationInput, AffiliationAvecDetails, PersonneInput, Structure, Fonction, Categorie, Personne } from "../types";
 import { useAuth } from "../lib/auth";
-import { fullName, invoke, Modal, normalizeLastNameInput, useEditLock } from "../lib/utils";
+import { fullName, normalizeLastNameInput } from "../lib/format";
+import { invoke } from "../lib/tauri";
+import { Modal } from "../components/Modal";
+import { useEditLock } from "../hooks/useEditLock";
 import { Label } from "../lib/ui";
 
 export function AffiliationModal({
@@ -27,7 +30,7 @@ export function AffiliationModal({
   const { can } = useAuth();
   const isModeStructure = structureId != null;
   const isModePersonne = personneId != null;
-  const availablePersonnes = personnes ?? [];
+  const availablePersonnes = useMemo(() => personnes ?? [], [personnes]);
 
   const [form, setForm] = useState<AffiliationInput>({
     id_affiliation: existing?.id_affiliation ?? null,
@@ -139,7 +142,7 @@ export function AffiliationModal({
           setDuplicatePerson(existing[0]);
           return;
         }
-      } catch (e) { /* ignorer */ }
+      } catch { /* ignorer */ }
     }
 
     doCreatePersonAndAffiliation();

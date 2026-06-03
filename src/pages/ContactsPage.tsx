@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import type { Personne, Categorie } from "../types";
-import { invoke, formatCivilite, exportTableFile } from "../lib/utils";
+import { invoke } from "../lib/tauri";
+import { formatCivilite } from "../lib/format";
+import { exportTableFile } from "../lib/export";
 import { getExportConfig } from "../lib/columns";
 import { Icon } from "../lib/ui";
 import { DataTable, type TableConfig } from "../components/DataTable";
@@ -47,7 +49,6 @@ export function ContactsPage() {
     setPersonnes(p);
     setLoading(false);
   };
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     setLoading(true);
     const catId = catFilter && catFilter > 0 ? catFilter : undefined;

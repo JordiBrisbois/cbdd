@@ -1,4 +1,7 @@
 use super::*;
+use crate::auth;
+use crate::db;
+use tauri::AppHandle;
 
 #[derive(Debug, Clone)]
 struct TableMeta {
@@ -270,7 +273,7 @@ fn insert_json_i64(
     }
 }
 
-pub fn executer_requete(
+pub fn executer_requete_impl(
     app: AppHandle,
     table_principale: String,
     colonnes: Vec<String>,

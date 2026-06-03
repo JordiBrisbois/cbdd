@@ -1,6 +1,8 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import type { Reunion } from "../types";
-import { invoke, formatDate, exportTableFile } from "../lib/utils";
+import { invoke } from "../lib/tauri";
+import { formatDate } from "../lib/format";
+import { exportTableFile } from "../lib/export";
 import { getExportConfig } from "../lib/columns";
 import { Icon } from "../lib/ui";
 import { DataTable, type TableConfig } from "../components/DataTable";
@@ -18,13 +20,13 @@ export function ReunionsPage() {
   const [loading, setLoading] = useState(false);
   const canCreateReunion = can("reunions.create");
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     const r = await invoke<Reunion[]>("lister_reunions", { recherche: search || undefined }).catch(() => []);
     setItems(r);
     setLoading(false);
-  };
-  useEffect(() => { load(); }, [search]);
+  }, [search]);
+  useEffect(() => { load(); }, [load]);
 
   const config: TableConfig = useMemo(() => ({
     id: "reunions",

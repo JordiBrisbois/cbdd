@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import type { BackupRunResult, CurrentSession, DBStatus, LoginInput, Page } from "./types";
-import { invoke } from "./lib/utils";
+import { invoke } from "./lib/tauri";
 import { AuthContext } from "./lib/auth";
 import { Sidebar, MobileNav } from "./components/Sidebar";
 import { LoginScreen } from "./components/LoginScreen";
@@ -79,11 +79,10 @@ export default function App() {
     return (Object.keys(PAGE_PERMISSIONS) as Page[]).filter((candidate) =>
       PAGE_PERMISSIONS[candidate].some((permission) => can(permission))
     );
-  }, [session]);
+  }, [can]);
 
   const currentPage = visiblePages.includes(page) ? page : (visiblePages[0] ?? page);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     void Promise.all([checkDb(), refreshSession()]);
   }, [checkDb, refreshSession]);
@@ -93,7 +92,6 @@ export default function App() {
     toast.error(dbStatus.error, { id: "db-status-error" });
   }, [dbStatus?.error]);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (!session || !dbStatus?.connected || !(session.role_codes.includes("ADMIN") || session.permissions.includes("admin.backups"))) {
       return;

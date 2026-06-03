@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import type { CurrentSession, Page } from "../types";
-import { cn } from "../lib/utils";
+import { cn } from "../lib/cn";
 import { check } from "@tauri-apps/plugin-updater";
 import { getVersion } from "@tauri-apps/api/app";
 import toast from "react-hot-toast";
