@@ -30,6 +30,23 @@ const NAV_ITEMS: { id: Page; label: string }[] = [
   { id: "admin", label: "Administration" },
 ];
 
+const UPDATE_CHECK_TIMEOUT_MS = 10000;
+
+async function withUpdateCheckTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timeoutId: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error("update-check-timeout")), UPDATE_CHECK_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId !== undefined) {
+      window.clearTimeout(timeoutId);
+    }
+  }
+}
+
 function UpdateSection() {
   const [version, setVersion] = useState("...");
   const [updateAvailable, setUpdateAvailable] = useState<{ version: string; body: string | null } | null>(null);
@@ -44,7 +61,7 @@ function UpdateSection() {
     setChecking(true);
     setUpdateAvailable(null);
     try {
-      const update = await check();
+      const update = await withUpdateCheckTimeout(check());
       if (update) {
         setUpdateAvailable({ version: update.version, body: update.body ?? null });
         toast.success(`Mise à jour v${update.version} disponible !`, { duration: 6000 });
@@ -63,12 +80,14 @@ function UpdateSection() {
     if (!updateAvailable) return;
     setInstalling(true);
     try {
-      const update = await check();
+      const update = await withUpdateCheckTimeout(check());
       if (update) {
         await update.downloadAndInstall();
       }
     } catch {
       // silent — if repo is gone, nothing happens
+    } finally {
+      setInstalling(false);
     }
   };
 
