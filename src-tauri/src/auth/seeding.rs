@@ -1,6 +1,6 @@
-use rusqlite::{params, Connection, OptionalExtension};
 use super::passwords::hash_password;
 use crate::models::*;
+use rusqlite::{params, Connection, OptionalExtension};
 
 static PERMISSIONS: &[(&str, &str)] = &[
     ("personnes.read", "Consulter les personnes"),
@@ -73,7 +73,10 @@ pub fn list_permissions() -> Vec<Permission> {
 }
 
 pub fn all_permission_codes() -> Vec<String> {
-    PERMISSIONS.iter().map(|(code, _)| (*code).to_string()).collect()
+    PERMISSIONS
+        .iter()
+        .map(|(code, _)| (*code).to_string())
+        .collect()
 }
 
 pub fn seed_permissions(conn: &Connection) -> Result<(), String> {
@@ -280,7 +283,10 @@ fn recover_admin_access_impl(
 
     let admin_role_id = get_admin_role_id(conn)?;
 
-    if let Some(username) = preferred_username.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(username) = preferred_username
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         let preferred_user_id: Option<i64> = conn
             .query_row(
                 "SELECT ID_User FROM T_Users WHERE Username = ? AND Is_Active = 1",

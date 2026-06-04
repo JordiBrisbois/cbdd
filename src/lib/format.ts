@@ -1,10 +1,17 @@
 export function formatDate(d: string | null): string {
   if (!d) return "—";
-  try {
-    return new Date(d).toLocaleDateString("fr-BE");
-  } catch {
-    return d;
+
+  const legacyDate = d.match(/^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$/);
+  if (legacyDate) {
+    const [, day, month, rawYear] = legacyDate;
+    const year = rawYear.length === 2 ? `20${rawYear}` : rawYear;
+    return `${day}/${month}/${year}`;
   }
+
+  const parsed = new Date(d);
+  if (Number.isNaN(parsed.getTime())) return d;
+
+  return parsed.toLocaleDateString("fr-BE");
 }
 
 export function formatCivilite(c: string | null): string {

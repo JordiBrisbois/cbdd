@@ -1,9 +1,9 @@
-use std::path::Path;
+use super::finalize_snapshot_as_backup_impl;
+use super::BackupMode;
 use chrono::Local;
 use rusqlite::Connection;
 use std::fs;
-use super::BackupMode;
-use super::finalize_snapshot_as_backup_impl;
+use std::path::Path;
 
 pub fn verify_backup_file_internal(path: &Path) -> Result<bool, String> {
     let conn =

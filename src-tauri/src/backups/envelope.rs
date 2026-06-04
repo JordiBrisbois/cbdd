@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
-use std::path::Path;
-use std::fs;
 use crate::models::BackupInfo;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
 
 pub const BACKUP_MAGIC: &[u8; 8] = b"CRVIBAK1";
 pub const LEGACY_SQLITE_EXTENSION: &str = "sqlite";
@@ -25,12 +25,8 @@ pub enum BackupMode {
 
 #[derive(Debug, Clone)]
 pub enum BackupDescriptor {
-    LegacyPlain {
-        automatic: bool,
-    },
-    Encrypted {
-        header: BackupEnvelopeHeader,
-    },
+    LegacyPlain { automatic: bool },
+    Encrypted { header: BackupEnvelopeHeader },
 }
 
 pub fn write_backup_envelope(
@@ -46,7 +42,8 @@ pub fn write_backup_envelope(
     let header_len = u32::try_from(header_bytes.len())
         .map_err(|_| "En-tête de backup trop volumineux.".to_string())?;
 
-    let mut output = Vec::with_capacity(BACKUP_MAGIC.len() + 4 + header_bytes.len() + payload.len());
+    let mut output =
+        Vec::with_capacity(BACKUP_MAGIC.len() + 4 + header_bytes.len() + payload.len());
     output.extend_from_slice(BACKUP_MAGIC);
     output.extend_from_slice(&header_len.to_le_bytes());
     output.extend_from_slice(&header_bytes);
@@ -54,9 +51,7 @@ pub fn write_backup_envelope(
     fs::write(path, output).map_err(|e| format!("Impossible d'écrire le backup chiffré: {}", e))
 }
 
-pub fn parse_backup_envelope(
-    bytes: &[u8],
-) -> Result<(&[u8], BackupEnvelopeHeader, &[u8]), String> {
+pub fn parse_backup_envelope(bytes: &[u8]) -> Result<(&[u8], BackupEnvelopeHeader, &[u8]), String> {
     if bytes.len() < BACKUP_MAGIC.len() + 4 || &bytes[..BACKUP_MAGIC.len()] != BACKUP_MAGIC {
         return Err("Format de backup CRVI inconnu.".into());
     }

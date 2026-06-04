@@ -40,6 +40,7 @@ pub fn charger_preset(app: AppHandle, id: i64) -> Result<Preset, String> {
     presets::charger_preset_impl(app, id)
 }
 
+pub mod affiliations;
 pub mod auth_commands;
 pub mod backup_commands;
 pub mod categories;
@@ -53,8 +54,8 @@ pub mod rgpd;
 pub mod search;
 pub mod stats;
 pub mod structures;
-pub mod affiliations;
 
+pub use affiliations::*;
 pub use auth_commands::*;
 pub use backup_commands::*;
 pub use categories::*;
@@ -68,7 +69,6 @@ pub use rgpd::*;
 pub use search::*;
 pub use stats::*;
 pub use structures::*;
-pub use affiliations::*;
 
 pub const ANONYMIZED_STATUS: &str = "Anonymisé";
 pub const ANONYMIZED_LABEL: &str = "Participant anonymisé";
@@ -131,12 +131,7 @@ pub fn ensure_resource_not_locked_by_other(
              FROM T_EditLocks
              WHERE Resource_Type = ? AND Resource_Id = ?",
             rusqlite::params![resource_type, resource_id],
-            |row| {
-                Ok((
-                    row.get::<_, Option<i64>>(0)?,
-                    row.get::<_, String>(1)?,
-                ))
-            },
+            |row| Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, String>(1)?)),
         )
         .optional()
         .map_err(|e| e.to_string())?;
@@ -338,12 +333,22 @@ pub fn append_date_filters(
     column: &str,
     filters: &StatsFilters,
 ) {
-    if let Some(start) = filters.start_date.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(start) = filters
+        .start_date
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         clauses.push(format!("date({}) >= date(?)", column));
         params.push(start.to_string());
     }
 
-    if let Some(end) = filters.end_date.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(end) = filters
+        .end_date
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         clauses.push(format!("date({}) <= date(?)", column));
         params.push(end.to_string());
     }

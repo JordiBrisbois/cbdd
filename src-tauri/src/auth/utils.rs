@@ -1,6 +1,6 @@
-use rusqlite::{params, Connection, OptionalExtension};
-use crate::models::{CurrentSession, SecuritySettings};
 use super::seeding::*;
+use crate::models::{CurrentSession, SecuritySettings};
+use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn require_permission(conn: &Connection, permission: &str) -> Result<CurrentSession, String> {
     let session = super::session::get_current_session(conn)?;
@@ -155,7 +155,10 @@ pub fn load_permissions_for_user(conn: &Connection, user_id: i64) -> Result<Vec<
     Ok(result)
 }
 
-pub fn load_permissions_for_role(conn: &Connection, role_code: &str) -> Result<Vec<String>, String> {
+pub fn load_permissions_for_role(
+    conn: &Connection,
+    role_code: &str,
+) -> Result<Vec<String>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT DISTINCT p.Code_Permission

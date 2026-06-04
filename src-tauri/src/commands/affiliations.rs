@@ -168,7 +168,12 @@ pub fn sauvegarder_affiliation(
         },
     )?;
 
-    ensure_affiliation_context_mutable(&conn, aff.id_affiliation, aff.ref_personne, aff.ref_structure)?;
+    ensure_affiliation_context_mutable(
+        &conn,
+        aff.id_affiliation,
+        aff.ref_personne,
+        aff.ref_structure,
+    )?;
 
     if let Some(aid) = aff.id_affiliation {
         conn.execute(

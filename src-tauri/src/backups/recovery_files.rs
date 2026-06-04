@@ -1,5 +1,5 @@
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
 const RECOVERY_SCRIPT_NAME: &str = "decrypt-crvi-backup.ps1";
 const RECOVERY_README_NAME: &str = "README_RECOVERY.txt";

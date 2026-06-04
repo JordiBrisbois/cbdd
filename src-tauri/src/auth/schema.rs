@@ -1,5 +1,5 @@
-use rusqlite::Connection;
 use super::seeding;
+use rusqlite::Connection;
 
 pub fn ensure_security_schema(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(

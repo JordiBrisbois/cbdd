@@ -1,10 +1,12 @@
+use super::passwords::verify_password;
+use super::seeding::*;
+use super::utils::{
+    load_permissions_for_role, load_permissions_for_user, load_role_codes_for_user,
+};
+use crate::models::CurrentSession;
 use once_cell::sync::Lazy;
 use rusqlite::{params, Connection, OptionalExtension};
 use std::sync::Mutex;
-use super::passwords::verify_password;
-use super::seeding::*;
-use super::utils::{load_permissions_for_role, load_permissions_for_user, load_role_codes_for_user};
-use crate::models::CurrentSession;
 
 pub(crate) static SESSION_STATE: Lazy<Mutex<Option<i64>>> = Lazy::new(|| Mutex::new(None));
 

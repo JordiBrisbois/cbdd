@@ -648,9 +648,7 @@ fn clean_text(value: Option<&str>) -> String {
 
 fn clean_str(value: &str) -> String {
     value
-        .replace('\u{00a0}', " ")
-        .replace('\r', " ")
-        .replace('\n', " ")
+        .replace(['\u{00a0}', '\r', '\n'], " ")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")

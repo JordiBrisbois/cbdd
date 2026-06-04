@@ -1,9 +1,9 @@
-use rusqlite::{params, Connection};
-use super::seeding::*;
-use super::utils::*;
 use super::passwords::hash_password;
+use super::seeding::*;
 use super::session::SESSION_STATE;
+use super::utils::*;
 use crate::models::*;
+use rusqlite::{params, Connection};
 
 pub fn list_users(conn: &Connection) -> Result<Vec<UserSummary>, String> {
     let mut stmt = conn

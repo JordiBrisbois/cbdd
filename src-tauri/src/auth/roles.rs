@@ -1,7 +1,7 @@
-use rusqlite::{params, Connection, OptionalExtension};
 use super::seeding::*;
 use super::utils::load_permission_codes_for_role_id;
 use crate::models::*;
+use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::BTreeSet;
 
 pub fn list_roles(conn: &Connection) -> Result<Vec<RoleDetails>, String> {

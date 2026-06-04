@@ -83,7 +83,10 @@ pub fn current_path() -> Option<String> {
 pub fn get_conn(app: &tauri::AppHandle) -> Result<Connection, String> {
     let candidates = candidate_paths(app);
     if candidates.is_empty() {
-        return Err("Aucune base de données. Utilisez 'Choisir une base' pour sélectionner un fichier.".into());
+        return Err(
+            "Aucune base de données. Utilisez 'Choisir une base' pour sélectionner un fichier."
+                .into(),
+        );
     }
 
     let mut last_error = None;

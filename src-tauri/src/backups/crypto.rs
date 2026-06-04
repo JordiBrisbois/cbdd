@@ -1,3 +1,5 @@
+use super::dpapi::*;
+use super::envelope::{parse_backup_envelope, BackupEnvelopeHeader, BackupMode};
 use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
@@ -5,10 +7,8 @@ use aes_gcm::{
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use pbkdf2::pbkdf2_hmac_array;
 use sha2::Sha256;
-use std::path::Path;
 use std::fs;
-use super::envelope::{BackupEnvelopeHeader, BackupMode, parse_backup_envelope};
-use super::dpapi::*;
+use std::path::Path;
 
 pub const WINDOWS_DPAPI_SCHEME: &str = "windows-dpapi";
 pub const PORTABLE_PASSPHRASE_SCHEME: &str = "portable-passphrase";
@@ -83,8 +83,7 @@ pub fn derive_portable_key(
     let iterations = iterations.unwrap_or(PBKDF2_ITERATIONS);
     if passphrase.chars().count() < 12 {
         return Err(
-            "Le mot de passe du backup portable doit contenir au moins 12 caractères."
-                .into(),
+            "Le mot de passe du backup portable doit contenir au moins 12 caractères.".into(),
         );
     }
     Ok(pbkdf2_hmac_array::<Sha256, 32>(

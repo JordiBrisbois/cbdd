@@ -11,10 +11,16 @@ pub fn get_dashboard_stats(
         start_date: None,
         end_date: None,
     });
+    let reunion_date_expr = sqlite_date_expr("r.Date_Reunion");
+    let reunion_month_expr = sqlite_month_expr("r.Date_Reunion");
+    let raw_reunion_date_expr = sqlite_date_expr("Date_Reunion");
 
     let (available_start_date, available_end_date): (Option<String>, Option<String>) = conn
         .query_row(
-            "SELECT MIN(Date_Reunion), MAX(Date_Reunion) FROM T_Reunions",
+            &format!(
+                "SELECT MIN({date_expr}), MAX({date_expr}) FROM T_Reunions",
+                date_expr = raw_reunion_date_expr,
+            ),
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
@@ -41,8 +47,7 @@ pub fn get_dashboard_stats(
     )?;
     let total_structures = query_i64(&conn, "SELECT COUNT(*) FROM T_Structures", Vec::new())?;
     let total_categories = query_i64(&conn, "SELECT COUNT(*) FROM T_Categories", Vec::new())?;
-    let total_affiliations =
-        query_i64(&conn, "SELECT COUNT(*) FROM T_Affiliations", Vec::new())?;
+    let total_affiliations = query_i64(&conn, "SELECT COUNT(*) FROM T_Affiliations", Vec::new())?;
     let total_reunions = query_i64(&conn, "SELECT COUNT(*) FROM T_Reunions", Vec::new())?;
     let partner_direct_structures = query_i64(
         &conn,
@@ -75,7 +80,12 @@ pub fn get_dashboard_stats(
 
     let mut period_clauses = Vec::new();
     let mut period_params = Vec::new();
-    append_date_filters(&mut period_clauses, &mut period_params, "r.Date_Reunion", &filters);
+    append_date_filters(
+        &mut period_clauses,
+        &mut period_params,
+        &reunion_date_expr,
+        &filters,
+    );
     let period_where = build_where_sql(&period_clauses);
 
     let period_reunions = query_i64(
@@ -109,17 +119,18 @@ pub fn get_dashboard_stats(
     )?;
 
     let meetings_by_month = {
-        let mut clauses = vec!["r.Date_Reunion IS NOT NULL".to_string()];
+        let mut clauses = vec![format!("{} IS NOT NULL", reunion_date_expr)];
         let mut params = Vec::new();
-        append_date_filters(&mut clauses, &mut params, "r.Date_Reunion", &filters);
+        append_date_filters(&mut clauses, &mut params, &reunion_date_expr, &filters);
         load_stats_buckets(
             &conn,
             &format!(
-                "SELECT substr(r.Date_Reunion, 1, 7), substr(r.Date_Reunion, 1, 7), COUNT(*)
+                "SELECT {month_expr}, {month_expr}, COUNT(*)
                  FROM T_Reunions r{}
-                 GROUP BY substr(r.Date_Reunion, 1, 7)
-                 ORDER BY substr(r.Date_Reunion, 1, 7) ASC",
-                build_where_sql(&clauses)
+                 GROUP BY {month_expr}
+                 ORDER BY {month_expr} ASC",
+                build_where_sql(&clauses),
+                month_expr = reunion_month_expr,
             ),
             params,
         )?
@@ -148,7 +159,7 @@ pub fn get_dashboard_stats(
     let attendance_by_status = {
         let mut clauses = vec!["COALESCE(p.Statut_Presence, '') != ''".to_string()];
         let mut params = Vec::new();
-        append_date_filters(&mut clauses, &mut params, "r.Date_Reunion", &filters);
+        append_date_filters(&mut clauses, &mut params, &reunion_date_expr, &filters);
         load_stats_buckets(
             &conn,
             &format!(
@@ -206,7 +217,7 @@ pub fn get_dashboard_stats(
     let meetings_by_organisme = {
         let mut clauses = Vec::new();
         let mut params = Vec::new();
-        append_date_filters(&mut clauses, &mut params, "r.Date_Reunion", &filters);
+        append_date_filters(&mut clauses, &mut params, &reunion_date_expr, &filters);
         load_stats_buckets(
             &conn,
             &format!(
@@ -293,7 +304,7 @@ pub fn get_dashboard_stats(
     let top_meetings = {
         let mut clauses = Vec::new();
         let mut params = Vec::new();
-        append_date_filters(&mut clauses, &mut params, "r.Date_Reunion", &filters);
+        append_date_filters(&mut clauses, &mut params, &reunion_date_expr, &filters);
         load_top_meetings(
             &conn,
             &format!(
@@ -306,9 +317,10 @@ pub fn get_dashboard_stats(
                  LEFT JOIN T_Presences p ON p.Ref_Reunion = r.ID_Reunion
                  LEFT JOIN T_Structures s ON s.ID_Structure = r.Ref_Structure{}
                  GROUP BY r.ID_Reunion, r.Titre_Reunion, r.Date_Reunion, s.Nom_Structure
-                 ORDER BY COUNT(p.ID_Presence) DESC, r.Date_Reunion DESC
+                 ORDER BY COUNT(p.ID_Presence) DESC, {date_expr} DESC
                  LIMIT 8",
-                build_where_sql(&clauses)
+                build_where_sql(&clauses),
+                date_expr = reunion_date_expr,
             ),
             params,
         )?
@@ -317,7 +329,7 @@ pub fn get_dashboard_stats(
     let top_structures_presence_rate = {
         let mut clauses = Vec::new();
         let mut params = Vec::new();
-        append_date_filters(&mut clauses, &mut params, "r.Date_Reunion", &filters);
+        append_date_filters(&mut clauses, &mut params, &reunion_date_expr, &filters);
         let where_sql = build_where_sql(&clauses);
         load_stats_participation(
             &conn,
@@ -356,7 +368,7 @@ pub fn get_dashboard_stats(
     let top_structures_presence_volume = {
         let mut clauses = Vec::new();
         let mut params = Vec::new();
-        append_date_filters(&mut clauses, &mut params, "r.Date_Reunion", &filters);
+        append_date_filters(&mut clauses, &mut params, &reunion_date_expr, &filters);
         let where_sql = build_where_sql(&clauses);
         load_stats_participation(
             &conn,
@@ -394,7 +406,7 @@ pub fn get_dashboard_stats(
     let top_people_presence = {
         let mut clauses = vec!["COALESCE(pe.Statut_Compte, '') != 'Anonymisé'".to_string()];
         let mut params = Vec::new();
-        append_date_filters(&mut clauses, &mut params, "r.Date_Reunion", &filters);
+        append_date_filters(&mut clauses, &mut params, &reunion_date_expr, &filters);
         load_stats_participation(
             &conn,
             &format!(

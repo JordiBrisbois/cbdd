@@ -1,9 +1,9 @@
-mod paths;
-mod envelope;
 mod crypto;
 mod dpapi;
-mod restore;
+mod envelope;
+mod paths;
 mod recovery_files;
+mod restore;
 
 use crate::auth;
 use crate::db;
@@ -19,9 +19,9 @@ use std::path::Path;
 use std::process::Command;
 use tauri::AppHandle;
 
-use paths::*;
-use envelope::*;
 use crypto::*;
+use envelope::*;
+use paths::*;
 use restore::*;
 
 const AUTO_BACKUP_KEY: &str = "AUTO_HOURLY";
@@ -238,7 +238,9 @@ pub fn restore_backup(
         .map_err(|e| format!("Dossier de backup introuvable: {}", e))?;
 
     if !backup.starts_with(&allowed_root) {
-        return Err("Le backup sélectionné n'appartient pas au dossier local de sauvegarde.".into());
+        return Err(
+            "Le backup sélectionné n'appartient pas au dossier local de sauvegarde.".into(),
+        );
     }
 
     let descriptor = describe_backup_file(&backup)?;
@@ -260,19 +262,25 @@ pub fn restore_backup(
 
     match decrypted_bytes {
         Some(bytes) => {
-            fs::write(&temp_target, &bytes)
-                .map_err(|e| format!("Impossible de préparer le backup pour restauration: {}", e))?;
+            fs::write(&temp_target, &bytes).map_err(|e| {
+                format!("Impossible de préparer le backup pour restauration: {}", e)
+            })?;
             if !verify_backup_file_internal(&temp_target)? {
                 let _ = fs::remove_file(&temp_target);
-                return Err("Le backup chiffré déchiffré a échoué au contrôle d'intégrité SQLite.".into());
+                return Err(
+                    "Le backup chiffré déchiffré a échoué au contrôle d'intégrité SQLite.".into(),
+                );
             }
         }
         None => {
             if !verify_backup_file_internal(&backup)? {
-                return Err("Le backup sélectionné a échoué au contrôle d'intégrité SQLite.".into());
+                return Err(
+                    "Le backup sélectionné a échoué au contrôle d'intégrité SQLite.".into(),
+                );
             }
-            fs::copy(&backup, &temp_target)
-                .map_err(|e| format!("Impossible de préparer le backup pour restauration: {}", e))?;
+            fs::copy(&backup, &temp_target).map_err(|e| {
+                format!("Impossible de préparer le backup pour restauration: {}", e)
+            })?;
         }
     }
 
@@ -292,9 +300,9 @@ pub fn restore_backup(
     let recovered_admin = auth::recover_admin_access(&conn, preferred_admin_username)?;
 
     let backup_metadata = fs::metadata(&backup).map_err(|e| e.to_string())?;
-    let admin_message = recovered_admin.map(|username| {
-        format!(" Accès administrateur sécurisé via le compte {}.", username)
-    }).unwrap_or_default();
+    let admin_message = recovered_admin
+        .map(|username| format!(" Accès administrateur sécurisé via le compte {}.", username))
+        .unwrap_or_default();
 
     Ok(BackupRunResult {
         status: BackupRunStatus::Restored,
@@ -321,7 +329,9 @@ pub fn delete_backup(app: &AppHandle, backup_path: &str) -> Result<(), String> {
         .map_err(|e| format!("Dossier de backup introuvable: {}", e))?;
 
     if !backup.starts_with(&allowed_root) {
-        return Err("Le backup sélectionné n'appartient pas au dossier local de sauvegarde.".into());
+        return Err(
+            "Le backup sélectionné n'appartient pas au dossier local de sauvegarde.".into(),
+        );
     }
     if !is_supported_backup_path(&backup) {
         return Err("Seuls les fichiers de backup CRVI peuvent être supprimés.".into());
@@ -355,7 +365,12 @@ fn create_backup_impl(
     .map_err(|e| format!("Échec du backup SQLite: {}", e))?;
 
     let finalize_result = finalize_snapshot_as_backup_impl(
-        &temp_sqlite, &backup_dir, automatic, &timestamp, mode, name_suffix,
+        &temp_sqlite,
+        &backup_dir,
+        automatic,
+        &timestamp,
+        mode,
+        name_suffix,
     );
     let _ = fs::remove_file(&temp_sqlite);
     let backup = finalize_result?;
@@ -409,10 +424,14 @@ pub(crate) fn finalize_snapshot_as_backup_impl(
     };
 
     let payload = encrypt_snapshot_bytes(&snapshot_bytes, &header, &mode)?;
-    let roundtrip = decrypt_snapshot_bytes(&payload, &header, match &mode {
-        BackupMode::WindowsLocal => None,
-        BackupMode::PortablePassphrase(passphrase) => Some(passphrase.as_str()),
-    })?;
+    let roundtrip = decrypt_snapshot_bytes(
+        &payload,
+        &header,
+        match &mode {
+            BackupMode::WindowsLocal => None,
+            BackupMode::PortablePassphrase(passphrase) => Some(passphrase.as_str()),
+        },
+    )?;
     if roundtrip != snapshot_bytes {
         return Err("Le backup chiffré n'a pas pu être relu correctement après écriture.".into());
     }
@@ -452,7 +471,10 @@ fn prune_old_backups(dir: &Path) -> Result<(), String> {
                 BackupDescriptor::Encrypted { header } => header.automatic,
             };
             if automatic {
-                Some((path, entry.file_name().to_str().unwrap_or_default().to_string()))
+                Some((
+                    path,
+                    entry.file_name().to_str().unwrap_or_default().to_string(),
+                ))
             } else {
                 None
             }

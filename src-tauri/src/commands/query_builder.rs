@@ -136,13 +136,13 @@ fn build_joins(main_alias: &str, needed: &std::collections::HashSet<&str>) -> Ve
         .filter(|a| *a != main_alias)
         .collect();
 
-    let needs_affiliation = needed_vec.iter().any(|a| *a == "a");
-    let needs_personne = needed_vec.iter().any(|a| *a == "p") || main_alias == "p";
-    let needs_structure = needed_vec.iter().any(|a| *a == "s") || main_alias == "s";
-    let needs_categorie = needed_vec.iter().any(|a| *a == "c");
-    let needs_fonction = needed_vec.iter().any(|a| *a == "f");
-    let needs_reunion = needed_vec.iter().any(|a| *a == "r") || main_alias == "r";
-    let needs_presence = needed_vec.iter().any(|a| *a == "pr");
+    let needs_affiliation = needed_vec.contains(&"a");
+    let needs_personne = needed_vec.contains(&"p") || main_alias == "p";
+    let needs_structure = needed_vec.contains(&"s") || main_alias == "s";
+    let needs_categorie = needed_vec.contains(&"c");
+    let needs_fonction = needed_vec.contains(&"f");
+    let needs_reunion = needed_vec.contains(&"r") || main_alias == "r";
+    let needs_presence = needed_vec.contains(&"pr");
 
     match main_alias {
         "p" => {
@@ -210,7 +210,8 @@ fn build_joins(main_alias: &str, needed: &std::collections::HashSet<&str>) -> Ve
                 joins.push("LEFT JOIN T_Fonctions f ON f.ID_Fonction = a.Ref_Fonction".to_string());
             }
             if needs_reunion {
-                joins.push("LEFT JOIN T_Reunions r ON r.Ref_Structure = s.ID_Structure".to_string());
+                joins
+                    .push("LEFT JOIN T_Reunions r ON r.Ref_Structure = s.ID_Structure".to_string());
             }
         }
         "a" => {
@@ -235,7 +236,8 @@ fn build_joins(main_alias: &str, needed: &std::collections::HashSet<&str>) -> Ve
                 joins.push("LEFT JOIN T_Presences pr ON pr.Ref_Reunion = r.ID_Reunion".to_string());
             }
             if needs_personne {
-                joins.push("LEFT JOIN T_Personnes p ON p.ID_Personne = pr.Ref_Personne".to_string());
+                joins
+                    .push("LEFT JOIN T_Personnes p ON p.ID_Personne = pr.Ref_Personne".to_string());
             }
         }
         "pr" => {
@@ -269,7 +271,10 @@ fn insert_json_i64(
     value: Option<i64>,
 ) {
     if let Some(value) = value {
-        map.insert(key.to_string(), serde_json::Value::String(value.to_string()));
+        map.insert(
+            key.to_string(),
+            serde_json::Value::String(value.to_string()),
+        );
     }
 }
 
@@ -368,7 +373,7 @@ pub fn executer_requete_impl(
                 let alias = extract_alias(&cond.champ);
                 match alias_to_table(alias) {
                     Some(meta) => {
-                        let raw_col = col_sql.split('.').last().unwrap_or(&col_sql);
+                        let raw_col = col_sql.split('.').next_back().unwrap_or(&col_sql);
                         format!(
                             "{} IN (SELECT {} FROM {} WHERE {} IS NOT NULL GROUP BY {} HAVING COUNT(*) > 1)",
                             col_sql, raw_col, meta.name, raw_col, raw_col
@@ -386,7 +391,7 @@ pub fn executer_requete_impl(
                 let alias = extract_alias(&cond.champ);
                 match alias_to_table(alias) {
                     Some(meta) => {
-                        let raw_col = col_sql.split('.').last().unwrap_or(&col_sql);
+                        let raw_col = col_sql.split('.').next_back().unwrap_or(&col_sql);
                         format!(
                             "{} IN (SELECT {} FROM {} WHERE {} IS NOT NULL GROUP BY {} HAVING COUNT(*) = 1)",
                             col_sql, raw_col, meta.name, raw_col, raw_col
@@ -472,7 +477,7 @@ pub fn executer_requete_impl(
             for (i, col_name) in colonnes.iter().enumerate() {
                 let key = col_name
                     .split('.')
-                    .last()
+                    .next_back()
                     .unwrap_or(col_name.as_str())
                     .to_string();
                 let val: String = row.get(i).unwrap_or_default();

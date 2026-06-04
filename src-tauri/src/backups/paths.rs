@@ -1,9 +1,9 @@
+use crate::db;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri::Manager;
-use crate::db;
 
 const BACKUP_EXTENSION: &str = "crvibak";
 const LEGACY_SQLITE_EXTENSION: &str = "sqlite";
