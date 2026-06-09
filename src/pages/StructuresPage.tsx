@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
-import type { Structure, Categorie, Personne, Fonction } from "../types";
+import type { Structure } from "../types";
 import { invoke } from "../lib/tauri";
 import { exportTableFile } from "../lib/export";
 import { getExportConfig } from "../lib/columns";
@@ -9,13 +9,8 @@ import { TableExportModal, type TableExportFormat, type TableExportScope } from 
 import { StructureModal } from "../modals/StructureModal";
 import toast from "react-hot-toast";
 import { useAuth } from "../lib/auth";
+import { useReferentials } from "../hooks/useReferentials";
 import { useAsyncData } from "../hooks/useAsyncData";
-
-type StructureReferences = {
-  categories: Categorie[];
-  personnes: Personne[];
-  fonctions: Fonction[];
-};
 
 export function StructuresPage() {
   const { can } = useAuth();
@@ -30,24 +25,10 @@ export function StructuresPage() {
   const { data: items, loading, reload } = useAsyncData(loadStructures, [], {
     errorMessage: "Impossible de charger les structures",
   });
-  const loadReferences = useCallback(async (): Promise<StructureReferences> => {
-    const [categories, personnes, fonctions] = await Promise.allSettled([
-      invoke<Categorie[]>("lister_categories"),
-      invoke<Personne[]>("lister_personnes"),
-      invoke<Fonction[]>("lister_fonctions"),
-    ]);
-    return {
-      categories: categories.status === "fulfilled" ? categories.value : [],
-      personnes: personnes.status === "fulfilled" ? personnes.value : [],
-      fonctions: fonctions.status === "fulfilled" ? fonctions.value : [],
-    };
-  }, []);
-  const { data: references } = useAsyncData<StructureReferences>(
-    loadReferences,
-    { categories: [], personnes: [], fonctions: [] },
-    { errorMessage: "Impossible de charger les données de référence" },
-  );
-  const { categories, personnes, fonctions } = references;
+  const refs = useReferentials();
+  const categories = refs.categories.data;
+  const personnes = refs.personnes.data;
+  const fonctions = refs.fonctions.data;
   const catMap = useMemo(() => Object.fromEntries(
     categories
       .filter((category) => category.id_categorie != null)
@@ -95,7 +76,7 @@ export function StructuresPage() {
     const exportConfig = scope === "current"
       ? getExportConfig("structures", config.columns)
       : { keysToExport: config.columns.map((column) => column.key), headers: config.columns.map((column) => column.label) };
-    const rows = items.map(s => exportConfig.keysToExport.map((k: string) => {
+    const rows = items.map((s: Structure) => exportConfig.keysToExport.map((k: string) => {
       return mapStructureValue(s, k);
     }));
     await exportTableFile(exportConfig.headers, rows, `structures_${new Date().toISOString().slice(0, 10)}`, format);

@@ -1,6 +1,7 @@
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (window.__TAURI_INTERNALS__) {
-    const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
     return tauriInvoke(cmd, args);
   }
   console.warn(`[CRVI-GRC] Tauri invoke '${cmd}' (not in Tauri context)`);

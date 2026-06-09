@@ -1,11 +1,12 @@
 import { useState, useMemo, useCallback } from "react";
 import toast from "react-hot-toast";
-import type { Reunion, PresenceAvecDetails, Personne, ReunionInput, Structure } from "../types";
+import type { Reunion, PresenceAvecDetails, Personne, ReunionInput } from "../types";
 import { invoke } from "../lib/tauri";
 import { Modal } from "../components/Modal";
 import { fullName } from "../lib/format";
 import { exportTableFile } from "../lib/export";
 import { useEditLock } from "../hooks/useEditLock";
+import { useReferentials } from "../hooks/useReferentials";
 import { Icon, Label, Field } from "../lib/ui";
 import { TableExportModal, type TableExportFormat, type TableExportScope } from "../components/TableExportModal";
 import { useAuth } from "../lib/auth";
@@ -47,18 +48,10 @@ export function ReunionModal({ reunion, onClose }: { reunion: Reunion; onClose: 
   const { data: presences, reload: reloadPresences } = useAsyncData(loadPresences, [], {
     errorMessage: "Impossible de charger les présences",
   });
-  const loadStructures = useCallback(() => {
-    if (!canReadStructures) return Promise.resolve([]);
-    return invoke<Structure[]>("lister_structures");
-  }, [canReadStructures]);
-  const { data: structures } = useAsyncData(loadStructures, [], {
-    errorMessage: "Impossible de charger les structures",
-  });
-  const loadPersonnes = useCallback(() => invoke<Personne[]>("lister_personnes"), []);
-  const { data: personnes, reload: reloadPersonnes } = useAsyncData(loadPersonnes, [], {
-    errorMessage: "Impossible de charger les personnes",
-    immediate: false,
-  });
+  const refs = useReferentials();
+  const structures = refs.structures.data;
+  const personnes = refs.personnes.data;
+  const reloadPersonnes = refs.personnes.reload || (() => Promise.resolve([] as unknown as never[]));
   const existingPresenceIds = useMemo(
     () => new Set(presences.map((presence) => presence.ref_personne).filter((id): id is number => typeof id === "number")),
     [presences],

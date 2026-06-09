@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import type { ReactNode } from "react";
-import type { Categorie, Condition, Fonction, Personne, Preset, Structure } from "../types";
+import type { Condition, Preset } from "../types";
 import { invoke } from "../lib/tauri";
 import { exportTableFile } from "../lib/export";
 import { formatValuesForMail, splitDelimitedValues } from "../lib/text";
@@ -16,14 +16,8 @@ import toast from "react-hot-toast";
 
 import { QB_FIELDS, QB_TABLES, QB_OPERATORS } from "../lib/queryBuilderConfig";
 import { useOpenEntity } from "../hooks/useOpenEntity";
+import { useReferentials } from "../hooks/useReferentials";
 import { useAsyncData } from "../hooks/useAsyncData";
-
-type SearchReferences = {
-  categories: Categorie[];
-  structures: Structure[];
-  personnes: Personne[];
-  fonctions: Fonction[];
-};
 
 export function SearchPage() {
   const {
@@ -47,26 +41,11 @@ export function SearchPage() {
   const { data: presets, reload: reloadPresets } = useAsyncData(loadPresets, [], {
     errorMessage: "Impossible de charger les presets",
   });
-  const loadReferences = useCallback(async (): Promise<SearchReferences> => {
-    const [categories, structures, personnes, fonctions] = await Promise.allSettled([
-      invoke<Categorie[]>("lister_categories"),
-      invoke<Structure[]>("lister_structures"),
-      invoke<Personne[]>("lister_personnes"),
-      invoke<Fonction[]>("lister_fonctions"),
-    ]);
-    return {
-      categories: categories.status === "fulfilled" ? categories.value : [],
-      structures: structures.status === "fulfilled" ? structures.value : [],
-      personnes: personnes.status === "fulfilled" ? personnes.value : [],
-      fonctions: fonctions.status === "fulfilled" ? fonctions.value : [],
-    };
-  }, []);
-  const { data: references } = useAsyncData<SearchReferences>(
-    loadReferences,
-    { categories: [], structures: [], personnes: [], fonctions: [] },
-    { errorMessage: "Impossible de charger les données de référence" },
-  );
-  const { categories, structures, personnes, fonctions } = references;
+  const refs = useReferentials();
+  const categories = refs.categories.data;
+  const structures = refs.structures.data;
+  const personnes = refs.personnes.data;
+  const fonctions = refs.fonctions.data;
 
   const savePreset = async () => {
     if (!presetName.trim()) { toast.error("Nom du preset requis"); return; }

@@ -1,11 +1,12 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import toast from "react-hot-toast";
-import type { Personne, PersonneInput, Categorie, AffiliationAvecDetails, Structure, Fonction } from "../types";
+import type { Personne, PersonneInput, Categorie, AffiliationAvecDetails } from "../types";
 import { useAuth } from "../lib/auth";
 import { invoke } from "../lib/tauri";
 import { Modal } from "../components/Modal";
 import { normalizeLastNameInput } from "../lib/format";
 import { useEditLock } from "../hooks/useEditLock";
+import { useReferentials } from "../hooks/useReferentials";
 import { Icon, Label, Field } from "../lib/ui";
 import { AffiliationModal } from "./AffiliationModal";
 import { useAffiliations } from "../hooks/useAffiliations";
@@ -28,8 +29,7 @@ export function ContactModal({ personne, onClose, categories }: { personne: Pers
     notes_commentaires: personne.notes_commentaires,
     original_updated_at: personne.updated_at,
   });
-  const [structures, setStructures] = useState<Structure[]>([]);
-  const [fonctions, setFonctions] = useState<Fonction[]>([]);
+  const refs = useReferentials();
   const [showAffModal, setShowAffModal] = useState(false);
   const [editAff, setEditAff] = useState<AffiliationAvecDetails | null>(null);
   const [duplicatePerson, setDuplicatePerson] = useState<Personne | null>(null);
@@ -46,15 +46,6 @@ export function ContactModal({ personne, onClose, categories }: { personne: Pers
     [personne.id_personne],
   );
   const { data: affiliations, reload: loadAffs } = useAffiliations(affiliationOwner);
-  useEffect(() => {
-    void Promise.allSettled([
-      invoke<Structure[]>("lister_structures"),
-      invoke<Fonction[]>("lister_fonctions"),
-    ]).then(([nextStructures, nextFunctions]) => {
-      setStructures(nextStructures.status === "fulfilled" ? nextStructures.value : []);
-      setFonctions(nextFunctions.status === "fulfilled" ? nextFunctions.value : []);
-    });
-  }, []);
 
   const save = async () => {
     if (!canSavePerson || lockBlocked) return;
@@ -211,7 +202,7 @@ export function ContactModal({ personne, onClose, categories }: { personne: Pers
         </div>
       )}
 
-      {showAffModal && canReadAffiliations && <AffiliationModal personneId={personne.id_personne!} structures={structures} fonctions={fonctions} categories={categories}
+      {showAffModal && canReadAffiliations && <AffiliationModal personneId={personne.id_personne!} structures={refs.structures.data} fonctions={refs.fonctions.data} categories={categories}
         existing={editAff} onClose={async () => { setShowAffModal(false); setEditAff(null); await loadAffs().catch(() => {}); }} />}
     </Modal>
   );

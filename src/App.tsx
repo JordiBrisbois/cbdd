@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import type { BackupRunResult, CurrentSession, DBStatus, LoginInput, Page } from "./types";
 import { invoke } from "./lib/tauri";
@@ -6,14 +6,15 @@ import { AuthContext } from "./lib/auth";
 import { Sidebar, MobileNav } from "./components/Sidebar";
 import { LoginScreen } from "./components/LoginScreen";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
-import { SearchPage } from "./pages/SearchPage";
-import { ContactsPage } from "./pages/ContactsPage";
-import { StructuresPage } from "./pages/StructuresPage";
-import { CategoriesPage } from "./pages/CategoriesPage";
-import { ReunionsPage } from "./pages/ReunionsPage";
-import { RGPDPage } from "./pages/RGPDPage";
-import { StatisticsPage } from "./pages/StatisticsPage";
-import { AdminPage } from "./pages/AdminPage";
+
+const SearchPage = lazy(() => import("./pages/SearchPage").then(m => ({ default: m.SearchPage })));
+const ContactsPage = lazy(() => import("./pages/ContactsPage").then(m => ({ default: m.ContactsPage })));
+const StructuresPage = lazy(() => import("./pages/StructuresPage").then(m => ({ default: m.StructuresPage })));
+const CategoriesPage = lazy(() => import("./pages/CategoriesPage").then(m => ({ default: m.CategoriesPage })));
+const ReunionsPage = lazy(() => import("./pages/ReunionsPage").then(m => ({ default: m.ReunionsPage })));
+const RGPDPage = lazy(() => import("./pages/RGPDPage").then(m => ({ default: m.RGPDPage })));
+const StatisticsPage = lazy(() => import("./pages/StatisticsPage").then(m => ({ default: m.StatisticsPage })));
+const AdminPage = lazy(() => import("./pages/AdminPage").then(m => ({ default: m.AdminPage })));
 
 const PAGE_PERMISSIONS: Record<Page, string[]> = {
   contacts: ["personnes.read"],
@@ -218,14 +219,16 @@ export default function App() {
                     {dbStatus?.connected ? "Changer de base" : "Choisir une base"}
                   </button>
                 </div>
-                {currentPage === "contacts" && <ContactsPage />}
-                {currentPage === "structures" && <StructuresPage />}
-                {currentPage === "categories" && <CategoriesPage />}
-                {currentPage === "reunions" && <ReunionsPage />}
-                {currentPage === "rgpd" && <RGPDPage />}
-                {currentPage === "stats" && <StatisticsPage />}
-                {currentPage === "search" && <SearchPage />}
-                {currentPage === "admin" && <AdminPage />}
+                <Suspense fallback={<div className="flex items-center justify-center p-12 text-sm text-muted-foreground">Chargement…</div>}>
+                  {currentPage === "contacts" && <ContactsPage />}
+                  {currentPage === "structures" && <StructuresPage />}
+                  {currentPage === "categories" && <CategoriesPage />}
+                  {currentPage === "reunions" && <ReunionsPage />}
+                  {currentPage === "rgpd" && <RGPDPage />}
+                  {currentPage === "stats" && <StatisticsPage />}
+                  {currentPage === "search" && <SearchPage />}
+                  {currentPage === "admin" && <AdminPage />}
+                </Suspense>
               </div>
             </main>
           </div>
