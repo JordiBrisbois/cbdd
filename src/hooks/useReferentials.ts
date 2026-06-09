@@ -4,52 +4,71 @@ import { invoke } from "../lib/tauri";
 import { useAuth } from "../lib/auth";
 import { useAsyncData } from "./useAsyncData";
 
-export interface ReferentialResult<T> { data: T; loading: boolean; error: string | undefined; reload: () => Promise<T>; }
+export interface ReferentialResult<T> {
+  data: T;
+  loading: boolean;
+  error: string | undefined;
+  reload: () => Promise<T>;
+}
 
-export function useReferentials() {
+type ReferentialOptions = {
+  categories?: boolean;
+  personnes?: boolean;
+  structures?: boolean;
+  fonctions?: boolean;
+  personnesImmediate?: boolean;
+};
+
+export function useReferentials(options: ReferentialOptions = {}) {
   const { can } = useAuth();
-  const canCategories = can("categories.read");
-  const canPersonnes = can("personnes.read");
-  const canStructures = can("structures.read");
-  const canFonctions = can("fonctions.read") || can("affiliations.read");
+  const categoriesEnabled = options.categories !== false && can("categories.read");
+  const personnesEnabled = options.personnes !== false && can("personnes.read");
+  const structuresEnabled = options.structures !== false && can("structures.read");
+  const fonctionsEnabled = options.fonctions !== false && can("affiliations.read");
 
-  const loadCategories = useCallback(() => {
-    if (!canCategories) return Promise.resolve([]);
-    return invoke<Categorie[]>("lister_categories");
-  }, [canCategories]);
+  const loadCategories = useCallback(
+    () => categoriesEnabled ? invoke<Categorie[]>("lister_categories") : Promise.resolve([]),
+    [categoriesEnabled],
+  );
   const cats = useAsyncData(loadCategories, [], {
-    errorMessage: canCategories ? "Impossible de charger les catégories" : undefined,
+    immediate: categoriesEnabled,
+    errorMessage: "Impossible de charger les catégories",
   });
 
-  const loadPersonnes = useCallback(() => {
-    if (!canPersonnes) return Promise.resolve([]);
-    return invoke<Personne[]>("lister_personnes");
-  }, [canPersonnes]);
+  const loadPersonnes = useCallback(
+    () => personnesEnabled ? invoke<Personne[]>("lister_personnes") : Promise.resolve([]),
+    [personnesEnabled],
+  );
   const pers = useAsyncData(loadPersonnes, [], {
-    errorMessage: canPersonnes ? "Impossible de charger les personnes" : undefined,
+    immediate: personnesEnabled && options.personnesImmediate !== false,
+    errorMessage: "Impossible de charger les personnes",
   });
 
-  const loadStructures = useCallback(() => {
-    if (!canStructures) return Promise.resolve([]);
-    return invoke<Structure[]>("lister_structures");
-  }, [canStructures]);
+  const loadStructures = useCallback(
+    () => structuresEnabled ? invoke<Structure[]>("lister_structures") : Promise.resolve([]),
+    [structuresEnabled],
+  );
   const structs = useAsyncData(loadStructures, [], {
-    errorMessage: canStructures ? "Impossible de charger les structures" : undefined,
+    immediate: structuresEnabled,
+    errorMessage: "Impossible de charger les structures",
   });
 
-  const loadFonctions = useCallback(() => {
-    if (!canFonctions) return Promise.resolve([]);
-    return invoke<Fonction[]>("lister_fonctions");
-  }, [canFonctions]);
+  const loadFonctions = useCallback(
+    () => fonctionsEnabled ? invoke<Fonction[]>("lister_fonctions") : Promise.resolve([]),
+    [fonctionsEnabled],
+  );
   const foncs = useAsyncData(loadFonctions, [], {
-    errorMessage: canFonctions ? "Impossible de charger les fonctions" : undefined,
+    immediate: fonctionsEnabled,
+    errorMessage: "Impossible de charger les fonctions",
   });
 
   return {
-    categories: { data: cats.data, loading: cats.loading, error: undefined, reload: cats.reload } as ReferentialResult<Categorie[]>,
-    personnes: { data: pers.data, loading: pers.loading, error: undefined, reload: pers.reload } as ReferentialResult<Personne[]>,
-    structures: { data: structs.data, loading: structs.loading, error: undefined, reload: structs.reload } as ReferentialResult<Structure[]>,
-    fonctions: { data: foncs.data, loading: foncs.loading, error: undefined, reload: foncs.reload } as ReferentialResult<Fonction[]>,
-    reloadAll: () => { cats.reload().catch(() => {}); pers.reload().catch(() => {}); structs.reload().catch(() => {}); foncs.reload().catch(() => {}); },
+    categories: { data: categoriesEnabled ? cats.data : [], loading: categoriesEnabled && cats.loading, error: categoriesEnabled ? cats.error : undefined, reload: cats.reload } satisfies ReferentialResult<Categorie[]>,
+    personnes: { data: personnesEnabled ? pers.data : [], loading: personnesEnabled && pers.loading, error: personnesEnabled ? pers.error : undefined, reload: pers.reload } satisfies ReferentialResult<Personne[]>,
+    structures: { data: structuresEnabled ? structs.data : [], loading: structuresEnabled && structs.loading, error: structuresEnabled ? structs.error : undefined, reload: structs.reload } satisfies ReferentialResult<Structure[]>,
+    fonctions: { data: fonctionsEnabled ? foncs.data : [], loading: fonctionsEnabled && foncs.loading, error: fonctionsEnabled ? foncs.error : undefined, reload: foncs.reload } satisfies ReferentialResult<Fonction[]>,
+    reloadAll: async () => {
+      await Promise.allSettled([cats.reload(), pers.reload(), structs.reload(), foncs.reload()]);
+    },
   };
 }

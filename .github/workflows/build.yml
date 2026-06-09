@@ -1,7 +1,12 @@
 name: Build CRVI-GRC
 on:
+  push:
+    branches: ["2.0"]
   pull_request:
-    branches: [main]
+    branches: [main, "2.0"]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-windows:
@@ -25,6 +30,9 @@ jobs:
 
       - name: Lint frontend
         run: npm run lint
+
+      - name: Test frontend
+        run: npm test
 
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=moderate

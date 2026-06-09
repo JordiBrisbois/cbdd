@@ -11,14 +11,32 @@ pub fn acquire_edit_lock(
         .ok_or_else(|| "Type de ressource de verrou inconnu".to_string())?;
     auth::require_permission(&conn, permission)?;
 
+    let (user_id, holder_label) = auth::current_actor_label(&conn)?;
+    acquire_edit_lock_impl(
+        &conn,
+        &resource_type,
+        resource_id,
+        user_id,
+        &holder_label,
+        &machine_label(),
+        edit_lock_token(),
+    )
+}
+
+fn acquire_edit_lock_impl(
+    conn: &rusqlite::Connection,
+    resource_type: &str,
+    resource_id: i64,
+    user_id: Option<i64>,
+    holder_label: &str,
+    machine: &str,
+    holder_token: &str,
+) -> Result<EditLockStatus, String> {
     conn.execute(
         "DELETE FROM T_EditLocks WHERE Expires_At <= datetime('now')",
         [],
     )
     .map_err(|e| e.to_string())?;
-
-    let (user_id, holder_label) = auth::current_actor_label(&conn)?;
-    let machine = machine_label();
 
     let existing = conn
         .query_row(
@@ -37,34 +55,34 @@ pub fn acquire_edit_lock(
         .optional()
         .map_err(|e| e.to_string())?;
 
-    let holder_token = edit_lock_token();
     if let Some((existing_token, existing_label, expires_at)) = existing {
         if existing_token.as_deref() == Some(holder_token) {
+            let renewed_expires_at = lock_expiry(conn)?;
             conn.execute(
                 "UPDATE T_EditLocks
                  SET Holder_Label = ?, Machine_Label = ?, Acquired_At = datetime('now'),
-                     Expires_At = datetime('now', ?)
+                     Expires_At = ?
                  WHERE Resource_Type = ? AND Resource_Id = ?",
                 rusqlite::params![
                     holder_label,
                     machine,
-                    format!("+{} minutes", EDIT_LOCK_MINUTES),
+                    renewed_expires_at,
                     resource_type,
                     resource_id
                 ],
             )
             .map_err(|e| e.to_string())?;
             return Ok(EditLockStatus {
-                resource_type,
+                resource_type: resource_type.to_string(),
                 resource_id,
                 acquired: true,
                 holder_label: Some(existing_label),
-                expires_at: Some(expires_at),
+                expires_at: Some(renewed_expires_at),
             });
         }
 
         return Ok(EditLockStatus {
-            resource_type,
+            resource_type: resource_type.to_string(),
             resource_id,
             acquired: false,
             holder_label: Some(existing_label),
@@ -72,13 +90,7 @@ pub fn acquire_edit_lock(
         });
     }
 
-    let expires_at = conn
-        .query_row(
-            "SELECT datetime('now', ?)",
-            rusqlite::params![format!("+{} minutes", EDIT_LOCK_MINUTES)],
-            |row| row.get::<_, String>(0),
-        )
-        .map_err(|e| e.to_string())?;
+    let expires_at = lock_expiry(conn)?;
 
     conn.execute(
         "INSERT INTO T_EditLocks (Resource_Type, Resource_Id, Holder_User_Id, Holder_Token, Holder_Label, Machine_Label, Expires_At)
@@ -88,12 +100,21 @@ pub fn acquire_edit_lock(
     .map_err(|e| e.to_string())?;
 
     Ok(EditLockStatus {
-        resource_type,
+        resource_type: resource_type.to_string(),
         resource_id,
         acquired: true,
         holder_label: None,
         expires_at: Some(expires_at),
     })
+}
+
+fn lock_expiry(conn: &rusqlite::Connection) -> Result<String, String> {
+    conn.query_row(
+        "SELECT datetime('now', ?)",
+        rusqlite::params![format!("+{} minutes", EDIT_LOCK_MINUTES)],
+        |row| row.get::<_, String>(0),
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -107,10 +128,19 @@ pub fn release_edit_lock(
         .ok_or_else(|| "Type de ressource de verrou inconnu".to_string())?;
     auth::require_permission(&conn, permission)?;
 
+    release_edit_lock_impl(&conn, &resource_type, resource_id, edit_lock_token())
+}
+
+fn release_edit_lock_impl(
+    conn: &rusqlite::Connection,
+    resource_type: &str,
+    resource_id: i64,
+    holder_token: &str,
+) -> Result<(), String> {
     conn.execute(
         "DELETE FROM T_EditLocks
          WHERE Resource_Type = ? AND Resource_Id = ? AND Holder_Token = ?",
-        rusqlite::params![resource_type, resource_id, edit_lock_token()],
+        rusqlite::params![resource_type, resource_id, holder_token],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -118,7 +148,62 @@ pub fn release_edit_lock(
 
 #[cfg(test)]
 mod tests {
+    use super::{acquire_edit_lock_impl, release_edit_lock_impl};
     use rusqlite::Connection;
+
+    fn empty_lock_connection() -> Connection {
+        let conn = Connection::open_in_memory().expect("sqlite");
+        conn.execute_batch(
+            "CREATE TABLE T_EditLocks (
+                Resource_Type TEXT NOT NULL,
+                Resource_Id INTEGER NOT NULL,
+                Holder_User_Id INTEGER,
+                Holder_Token TEXT,
+                Holder_Label TEXT NOT NULL,
+                Machine_Label TEXT,
+                Acquired_At TEXT DEFAULT (datetime('now')),
+                Expires_At TEXT NOT NULL,
+                PRIMARY KEY (Resource_Type, Resource_Id)
+            );",
+        )
+        .expect("schema");
+        conn
+    }
+
+    #[test]
+    fn implementation_acquires_renews_refuses_and_releases_by_token() {
+        let conn = empty_lock_connection();
+
+        let acquired =
+            acquire_edit_lock_impl(&conn, "personnes", 1, Some(1), "Alice", "PC-A", "token-A")
+                .expect("acquire");
+        assert!(acquired.acquired);
+
+        let refused =
+            acquire_edit_lock_impl(&conn, "personnes", 1, Some(2), "Bob", "PC-B", "token-B")
+                .expect("refuse");
+        assert!(!refused.acquired);
+        assert_eq!(refused.holder_label.as_deref(), Some("Alice"));
+
+        let renewed =
+            acquire_edit_lock_impl(&conn, "personnes", 1, Some(1), "Alice", "PC-A", "token-A")
+                .expect("renew");
+        assert!(renewed.acquired);
+        assert_eq!(
+            renewed.expires_at,
+            conn.query_row(
+                "SELECT Expires_At FROM T_EditLocks WHERE Resource_Type = 'personnes' AND Resource_Id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .ok()
+        );
+
+        release_edit_lock_impl(&conn, "personnes", 1, "token-B").expect("wrong release");
+        assert_eq!(count_locks(&conn), 1);
+        release_edit_lock_impl(&conn, "personnes", 1, "token-A").expect("release");
+        assert_eq!(count_locks(&conn), 0);
+    }
 
     fn setup() -> Connection {
         let conn = Connection::open_in_memory().expect("sqlite");

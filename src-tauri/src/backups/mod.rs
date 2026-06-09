@@ -304,22 +304,36 @@ pub fn restore_backup(
     // À partir d'ici, toute erreur doit déclencher un rollback complet.
     // Le fichier rollback ne sera supprimé qu'après validation complète.
     if let Err(error) = db::connect(&db_path.to_string_lossy()) {
-        let _ = rollback_restore(&db_path, &rollback_path);
-        return Err(format!(
-            "Base restaurée mais reconnexion impossible: {error}"
+        return Err(rollback_error(
+            &db_path,
+            &rollback_path,
+            format!("Base restaurée mais reconnexion impossible: {error}"),
         ));
     }
-    let conn = db::get_conn(app)
-        .map_err(|e| format!("Base restaurée mais validation d'accès impossible: {}", e))?;
-    let recovered_admin = match auth::recover_admin_access(&conn, preferred_admin_username) {
-        Ok(admin) => admin,
+    let conn = match db::get_conn(app) {
+        Ok(conn) => conn,
         Err(error) => {
-            let _ = rollback_restore(&db_path, &rollback_path);
-            return Err(format!(
-                "Base restaurée mais récupération de l'accès administrateur impossible: {error}"
+            return Err(rollback_error(
+                &db_path,
+                &rollback_path,
+                format!("Base restaurée mais validation d'accès impossible: {error}"),
             ));
         }
     };
+    let recovered_admin = match auth::recover_admin_access(&conn, preferred_admin_username) {
+        Ok(admin) => admin,
+        Err(error) => {
+            drop(conn);
+            return Err(rollback_error(
+                &db_path,
+                &rollback_path,
+                format!(
+                    "Base restaurée mais récupération de l'accès administrateur impossible: {error}"
+                ),
+            ));
+        }
+    };
+    drop(conn);
     // Tout a réussi : on peut supprimer le rollback.
     if rollback_path.exists() {
         fs::remove_file(&rollback_path)
@@ -368,15 +382,27 @@ pub fn delete_backup(app: &AppHandle, backup_path: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn rollback_error(db_path: &Path, rollback_path: &Path, original_error: String) -> String {
+    match rollback_restore(db_path, rollback_path)
+        .and_then(|_| db::connect(&db_path.to_string_lossy()))
+    {
+        Ok(()) => format!("{original_error}. L'ancienne base a été restaurée."),
+        Err(rollback_error) => format!("{original_error}. {rollback_error}"),
+    }
+}
+
 /// Restaure le fichier rollback par dessus la base active.
-/// N'essaie pas de reconnecter — l'appelant gère la reconnexion.
 fn rollback_restore(db_path: &Path, rollback_path: &Path) -> Result<(), String> {
-    let _ = fs::remove_file(db_path);
     if !rollback_path.exists() {
         return Err(format!(
             "Échec critique: fichier rollback introuvable à {}",
             rollback_path.display()
         ));
+    }
+    if db_path.exists() {
+        fs::remove_file(db_path).map_err(|e| {
+            format!("Échec critique: impossible de retirer la base restaurée avant rollback ({e})")
+        })?;
     }
     fs::rename(rollback_path, db_path).map_err(|e| {
         format!(
@@ -616,28 +642,20 @@ mod tests {
     }
 
     #[test]
-    fn rollback_reconnexion_impossible() {
+    fn rollback_introuvable_preserve_la_base_active() {
         let (_dir, db_path, rollback_path) = setup_temp_db();
-        // Corrompre le fichier rollback
-        fs::write(&rollback_path, b"not a sqlite database").expect("write corrupt file");
+        fs::remove_file(&rollback_path).expect("remove rollback");
 
-        // rollback_restore doit copier le fichier et réussir sur le plan fichier
-        rollback_restore(&db_path, &rollback_path).expect("rollback doit réussir");
-        assert_no_rollback_orphan(&rollback_path);
-        // Le fichier db_path est maintenant le fichier corrompu
-        let content = fs::read(&db_path).expect("read db");
-        assert_eq!(
-            content, b"not a sqlite database",
-            "le fichier corrompu a été copié vers db_path"
-        );
-        // Database-level reconnexion impossible
-        let conn = Connection::open(&db_path).expect("open db path");
-        let integrity: Result<String, _> =
-            conn.query_row("PRAGMA integrity_check", [], |row| row.get(0));
-        assert!(
-            integrity.is_err(),
-            "la reconnexion SQLite doit échouer sur une base corrompue"
-        );
+        let error = rollback_restore(&db_path, &rollback_path).expect_err("rollback doit échouer");
+        assert!(error.contains("rollback introuvable"));
+
+        let conn = Connection::open(&db_path).expect("open active db");
+        let version: String = conn
+            .query_row("SELECT value FROM meta WHERE key = 'version'", [], |row| {
+                row.get(0)
+            })
+            .expect("read active version");
+        assert_eq!(version, "original");
     }
 
     #[test]

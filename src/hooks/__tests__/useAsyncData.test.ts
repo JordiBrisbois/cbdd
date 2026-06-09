@@ -29,6 +29,7 @@ describe("useAsyncData", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(toastError).toHaveBeenCalledWith("Oups: Error: échec");
+    expect(result.current.error).toBe("Oups: Error: échec");
   });
 
   it("ignore les réponses de requêtes obsolètes", async () => {

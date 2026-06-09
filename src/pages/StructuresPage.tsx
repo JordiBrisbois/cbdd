@@ -25,7 +25,7 @@ export function StructuresPage() {
   const { data: items, loading, reload } = useAsyncData(loadStructures, [], {
     errorMessage: "Impossible de charger les structures",
   });
-  const refs = useReferentials();
+  const refs = useReferentials({ structures: false });
   const categories = refs.categories.data;
   const personnes = refs.personnes.data;
   const fonctions = refs.fonctions.data;

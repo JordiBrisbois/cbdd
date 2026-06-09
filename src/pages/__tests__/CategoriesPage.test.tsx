@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 vi.mock("react-hot-toast", () => ({
   default: { error: vi.fn() },
@@ -15,7 +16,7 @@ vi.mock("../../lib/auth", () => ({
 }));
 
 vi.mock("../../modals/ContactModal", () => ({
-  ContactModal: () => null,
+  ContactModal: () => <div>Contact chargé</div>,
 }));
 
 describe("CategoriesPage", () => {
@@ -24,11 +25,26 @@ describe("CategoriesPage", () => {
   });
 
   it("appelle get_personne avant d'ouvrir la modale contact", async () => {
-    invokeMock
-      .mockResolvedValueOnce([{ id_categorie: 1, nom_categorie: "Test" }])
-      .mockResolvedValue([
-        { id_personne: 1, nom: "Dupont", prenom: "Jean", type_entree: "personne" },
-      ]);
+    const user = userEvent.setup();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "lister_categories") {
+        return Promise.resolve([{ id_categorie: 1, nom_categorie: "Test" }]);
+      }
+      if (command === "lister_personnes_categorie_detaillee") {
+        return Promise.resolve([
+          { id_personne: 1, nom: "Dupont", prenom: "Jean", type_entree: "personne" },
+        ]);
+      }
+      if (command === "get_personne") {
+        return Promise.resolve({
+          id_personne: 1,
+          nom: "Dupont",
+          prenom: "Jean",
+          updated_at: "2026-06-09 12:00:00",
+        });
+      }
+      return Promise.resolve([]);
+    });
 
     const { CategoriesPage } = await import("../CategoriesPage");
     render(<CategoriesPage />);
@@ -37,9 +53,14 @@ describe("CategoriesPage", () => {
       expect(invokeMock).toHaveBeenCalledWith("lister_categories");
     });
 
-    const getPersonneCalls = invokeMock.mock.calls.filter(
-      (c: unknown[]) => c[0] === "get_personne",
-    );
-    expect(getPersonneCalls).toHaveLength(0);
+    expect(invokeMock.mock.calls.filter((call) => call[0] === "get_personne")).toHaveLength(0);
+
+    await user.selectOptions(screen.getByRole("combobox"), "1");
+    await user.click(await screen.findByText("Dupont"));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("get_personne", { id: 1 });
+      expect(screen.getByText("Contact chargé")).toBeInTheDocument();
+    });
   });
 });

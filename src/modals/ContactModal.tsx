@@ -29,7 +29,7 @@ export function ContactModal({ personne, onClose, categories }: { personne: Pers
     notes_commentaires: personne.notes_commentaires,
     original_updated_at: personne.updated_at,
   });
-  const refs = useReferentials();
+  const refs = useReferentials({ categories: false, personnes: false });
   const [showAffModal, setShowAffModal] = useState(false);
   const [editAff, setEditAff] = useState<AffiliationAvecDetails | null>(null);
   const [duplicatePerson, setDuplicatePerson] = useState<Personne | null>(null);

@@ -8,19 +8,23 @@ export function useAsyncData<T>(
 ) {
   const [data, setData] = useState<T>(initialValue);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>();
   const requestId = useRef(0);
   const immediate = options.immediate !== false;
 
   const reload = useCallback(async () => {
     const id = ++requestId.current;
     setLoading(true);
+    setError(undefined);
     try {
       const next = await loader();
       if (id === requestId.current) setData(next);
       return next;
     } catch (error) {
       if (id === requestId.current) {
-        toast.error(options.errorMessage ? `${options.errorMessage}: ${String(error)}` : String(error));
+        const message = options.errorMessage ? `${options.errorMessage}: ${String(error)}` : String(error);
+        setError(message);
+        toast.error(message);
       }
       throw error;
     } finally {
@@ -33,5 +37,5 @@ export function useAsyncData<T>(
     void reload().catch(() => {});
   }, [immediate, reload]);
 
-  return { data, setData, loading, reload };
+  return { data, setData, loading, error, reload };
 }

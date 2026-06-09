@@ -32,7 +32,6 @@ export function ReunionModal({ reunion, onClose }: { reunion: Reunion; onClose: 
   const [addStatut, setAddStatut] = useState("Présent");
   const [showExportModal, setShowExportModal] = useState(false);
   const showPresences = !!reunion.id_reunion;
-  const { lockStatus, lockBlocked } = useEditLock("reunions", reunion.id_reunion, !!reunion.id_reunion);
   const canReadStructures = can("structures.read");
   const canUpdateReunion = reunion.id_reunion ? can("reunions.update") : can("reunions.create");
   const canDeleteReunion = !!reunion.id_reunion && can("reunions.delete");
@@ -40,6 +39,13 @@ export function ReunionModal({ reunion, onClose }: { reunion: Reunion; onClose: 
   const canCreatePresence = can("presences.create");
   const canUpdatePresence = can("presences.update");
   const canDeletePresence = can("presences.delete");
+  const canMutateReunionContext = canUpdateReunion || canDeleteReunion
+    || canCreatePresence || canUpdatePresence || canDeletePresence;
+  const { lockStatus, lockBlocked } = useEditLock(
+    "reunions",
+    reunion.id_reunion,
+    canMutateReunionContext && !!reunion.id_reunion,
+  );
   const readOnlyReunion = lockBlocked || !canUpdateReunion;
   const loadPresences = useCallback(() => {
     if (!reunion.id_reunion || !canReadPresences) return Promise.resolve([]);
@@ -48,10 +54,14 @@ export function ReunionModal({ reunion, onClose }: { reunion: Reunion; onClose: 
   const { data: presences, reload: reloadPresences } = useAsyncData(loadPresences, [], {
     errorMessage: "Impossible de charger les présences",
   });
-  const refs = useReferentials();
+  const refs = useReferentials({
+    categories: false,
+    fonctions: false,
+    personnesImmediate: false,
+  });
   const structures = refs.structures.data;
   const personnes = refs.personnes.data;
-  const reloadPersonnes = refs.personnes.reload || (() => Promise.resolve([] as unknown as never[]));
+  const reloadPersonnes = refs.personnes.reload;
   const existingPresenceIds = useMemo(
     () => new Set(presences.map((presence) => presence.ref_personne).filter((id): id is number => typeof id === "number")),
     [presences],
