@@ -70,7 +70,6 @@ pub fn ensure_concurrency_schema(conn: &Connection) -> Result<(), String> {
     ensure_column(conn, "T_Structures", "Updated_At", "TEXT")?;
     ensure_column(conn, "T_Affiliations", "Updated_At", "TEXT")?;
     ensure_column(conn, "T_Reunions", "Updated_At", "TEXT")?;
-
     conn.execute_batch(
         "
         UPDATE T_Personnes SET Updated_At = COALESCE(Updated_At, Date_Creation, datetime('now'));
@@ -82,6 +81,7 @@ pub fn ensure_concurrency_schema(conn: &Connection) -> Result<(), String> {
             Resource_Type TEXT NOT NULL,
             Resource_Id INTEGER NOT NULL,
             Holder_User_Id INTEGER,
+            Holder_Token TEXT,
             Holder_Label TEXT NOT NULL,
             Machine_Label TEXT,
             Acquired_At TEXT NOT NULL DEFAULT (datetime('now')),
@@ -101,6 +101,7 @@ pub fn ensure_concurrency_schema(conn: &Connection) -> Result<(), String> {
         ",
     )
     .map_err(|e| format!("Erreur schéma concurrence: {}", e))?;
+    ensure_column(conn, "T_EditLocks", "Holder_Token", "TEXT")?;
 
     Ok(())
 }

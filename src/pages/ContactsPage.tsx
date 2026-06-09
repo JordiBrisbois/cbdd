@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { Personne, Categorie } from "../types";
 import { invoke } from "../lib/tauri";
 import { formatCivilite } from "../lib/format";
@@ -10,19 +10,28 @@ import { TableExportModal, type TableExportFormat, type TableExportScope } from 
 import { ContactModal } from "../modals/ContactModal";
 import toast from "react-hot-toast";
 import { useAuth } from "../lib/auth";
+import { useAsyncData } from "../hooks/useAsyncData";
 
 export function ContactsPage() {
   const { can } = useAuth();
-  const [personnes, setPersonnes] = useState<Personne[]>([]);
-  const [categories, setCategories] = useState<Categorie[]>([]);
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState<number | null>(null);
   const [selected, setSelected] = useState<Personne | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [loading, setLoading] = useState(false);
   const canCreatePerson = can("personnes.create");
+  const loadPeople = useCallback(() => {
+    const categorieId = catFilter && catFilter > 0 ? catFilter : undefined;
+    return invoke<Personne[]>("lister_personnes", { recherche: search || undefined, categorieId });
+  }, [catFilter, search]);
+  const { data: personnes, loading, reload } = useAsyncData(loadPeople, [], {
+    errorMessage: "Impossible de charger les contacts",
+  });
+  const loadCategories = useCallback(() => invoke<Categorie[]>("lister_categories"), []);
+  const { data: categories } = useAsyncData(loadCategories, [], {
+    errorMessage: "Impossible de charger les catégories",
+  });
 
-  const config: TableConfig = useMemo(() => ({
+  const config: TableConfig<Personne> = useMemo(() => ({
     id: "contacts",
     columns: [
       { key: "civ", label: "Civ." }, { key: "nom", label: "Nom" }, { key: "prenom", label: "Prénom" },
@@ -41,23 +50,6 @@ export function ContactsPage() {
     },
     stickyColumns: { widths: { civ: 80, nom: 140, prenom: 132 } },
   }), []);
-
-  const load = async () => {
-    setLoading(true);
-    const catId = catFilter && catFilter > 0 ? catFilter : undefined;
-    const p = await invoke<Personne[]>("lister_personnes", { recherche: search || undefined, categorieId: catId }).catch(() => []);
-    setPersonnes(p);
-    setLoading(false);
-  };
-  useEffect(() => {
-    setLoading(true);
-    const catId = catFilter && catFilter > 0 ? catFilter : undefined;
-    void invoke<Personne[]>("lister_personnes", { recherche: search || undefined, categorieId: catId })
-      .then(setPersonnes)
-      .catch((e) => { toast.error(String(e)); setPersonnes([]); })
-      .finally(() => setLoading(false));
-  }, [search, catFilter]);
-  useEffect(() => { invoke<Categorie[]>("lister_categories").then(setCategories).catch((e) => toast.error(String(e))); }, []);
 
   const mapContactValue = (p: Personne, k: string) => {
     switch (k) {
@@ -78,20 +70,20 @@ export function ContactsPage() {
     }
   };
 
-  const exportContacts = (scope: TableExportScope, format: TableExportFormat) => {
+  const exportContacts = async (scope: TableExportScope, format: TableExportFormat) => {
     const exportConfig = scope === "current"
       ? getExportConfig("contacts", config.columns)
       : { keysToExport: config.columns.map((column) => column.key), headers: config.columns.map((column) => column.label) };
     const rows = personnes.map(p => exportConfig.keysToExport.map((k: string) => {
       return mapContactValue(p, k);
     }));
-    exportTableFile(exportConfig.headers, rows, `contacts_${new Date().toISOString().slice(0, 10)}`, format);
+    await exportTableFile(exportConfig.headers, rows, `contacts_${new Date().toISOString().slice(0, 10)}`, format);
     toast.success(`${personnes.length} contacts exportés`);
   };
 
   return (
     <>
-      <DataTable config={config} data={personnes as unknown as Record<string, unknown>[]} loading={loading}
+      <DataTable config={config} data={personnes} loading={loading}
         renderers={{
           civ: (item) => formatCivilite(item.civilite as string | null),
           nom: (item) => <span className="font-medium">{(item.nom as string) || "—"}</span>,
@@ -110,7 +102,7 @@ export function ContactsPage() {
           notes: (item) => <span className="text-muted-foreground">{(item.notes_commentaires as string) || "—"}</span>,
           date_creation: (item) => <span className="text-muted-foreground">{(item.date_creation as string) || "—"}</span>,
         }}
-        onRowClick={(item) => setSelected(item as unknown as Personne)}
+        onRowClick={setSelected}
         header={
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold tracking-tight">Annuaire des Contacts</h1>
@@ -144,7 +136,7 @@ export function ContactsPage() {
         }
       />
       <TableExportModal open={showExportModal} onClose={() => setShowExportModal(false)} onConfirm={exportContacts} />
-      {selected && <ContactModal personne={selected} onClose={() => { setSelected(null); load(); }} categories={categories} />}
+      {selected && <ContactModal personne={selected} onClose={() => { setSelected(null); void reload().catch(() => {}); }} categories={categories} />}
     </>
   );
 }

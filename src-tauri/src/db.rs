@@ -72,6 +72,7 @@ pub fn connect(path: &str) -> Result<(), String> {
         .lock()
         .map_err(|e| format!("Erreur mutex: {}", e))?;
     drop(conn);
+    auth::logout()?;
     state.path = Some(path.to_string());
     Ok(())
 }
@@ -100,6 +101,9 @@ pub fn get_conn(app: &tauri::AppHandle) -> Result<Connection, String> {
                     let mut state = DB_STATE
                         .lock()
                         .map_err(|e| format!("Erreur mutex: {}", e))?;
+                    if state.path.as_deref() != Some(path.as_str()) {
+                        auth::logout()?;
+                    }
                     state.path = Some(path.clone());
                 }
                 save_path(app, &path);

@@ -72,7 +72,7 @@ pub fn sauvegarder_structure(
                 Adresse_Structure = ?, Code_Postal_Structure = ?,
                 Commune_Structure = ?, Pays = ?, Telephone_General = ?,
                 Email_General = ?, Site_Web = ?, Notes_Commentaires = ?,
-                ID_Categorie = ?, Updated_At = datetime('now')
+                ID_Categorie = ?, Updated_At = strftime('%Y-%m-%d %H:%M:%f', 'now')
              WHERE ID_Structure = ? AND COALESCE(Updated_At, '') = COALESCE(?, '')",
             rusqlite::params![
                 structure.nom_structure,
@@ -105,7 +105,7 @@ pub fn sauvegarder_structure(
                  Code_Postal_Structure, Commune_Structure, Pays,
                  Telephone_General, Email_General, Site_Web,
                  Notes_Commentaires, ID_Categorie, Date_Creation, Updated_At)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, date('now'), datetime('now'))",
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, date('now'), strftime('%Y-%m-%d %H:%M:%f', 'now'))",
             rusqlite::params![
                 structure.nom_structure,
                 structure.service_specifique,
@@ -133,20 +133,5 @@ pub fn supprimer_structure(app: AppHandle, id: i64) -> Result<(), String> {
     let conn = db::get_conn(&app)?;
     auth::require_permission(&conn, "structures.delete")?;
     ensure_resource_not_locked_by_other(&conn, "structures", id)?;
-    conn.execute(
-        "DELETE FROM T_Affiliations WHERE Ref_Structure = ?",
-        rusqlite::params![id],
-    )
-    .map_err(|e| e.to_string())?;
-    conn.execute(
-        "UPDATE T_Reunions SET Ref_Structure = NULL WHERE Ref_Structure = ?",
-        rusqlite::params![id],
-    )
-    .map_err(|e| e.to_string())?;
-    conn.execute(
-        "DELETE FROM T_Structures WHERE ID_Structure = ?",
-        rusqlite::params![id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    crate::services::structures::delete_structure(&conn, id)
 }

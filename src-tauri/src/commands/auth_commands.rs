@@ -9,11 +9,7 @@ pub fn get_current_session(app: AppHandle) -> Result<CurrentSession, String> {
 #[tauri::command]
 pub fn login(app: AppHandle, credentials: LoginInput) -> Result<CurrentSession, String> {
     let conn = db::get_conn(&app)?;
-    auth::login(
-        &conn,
-        credentials.username.trim(),
-        credentials.password.trim(),
-    )
+    auth::login(&conn, credentials.username.trim(), &credentials.password)
 }
 
 #[tauri::command]
@@ -77,7 +73,7 @@ pub fn changer_mot_de_passe_user(
 ) -> Result<(), String> {
     let conn = db::get_conn(&app)?;
     auth::require_permission(&conn, "admin.users")?;
-    auth::admin_set_password(&conn, payload.user_id, payload.new_password.trim())
+    auth::admin_set_password(&conn, payload.user_id, &payload.new_password)
 }
 
 #[tauri::command]
@@ -86,11 +82,7 @@ pub fn changer_mon_mot_de_passe(
     payload: OwnPasswordChangeInput,
 ) -> Result<(), String> {
     let conn = db::get_conn(&app)?;
-    auth::change_own_password(
-        &conn,
-        payload.current_password.trim(),
-        payload.new_password.trim(),
-    )
+    auth::change_own_password(&conn, &payload.current_password, &payload.new_password)
 }
 
 #[tauri::command]

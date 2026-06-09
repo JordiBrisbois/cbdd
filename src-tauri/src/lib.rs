@@ -4,6 +4,7 @@ mod commands;
 mod db;
 mod excel_export;
 mod models;
+mod services;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

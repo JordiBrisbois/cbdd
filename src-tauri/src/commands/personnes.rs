@@ -92,7 +92,7 @@ pub fn sauvegarder_personne(app: AppHandle, personne: PersonneInput) -> Result<P
                 Telephone_Prive = ?, Adresse_Privee = ?, Code_Postal_Prive = ?,
                 Commune_Privee = ?, Pays = ?, Consentement_RGPD = ?,
                 Date_Consentement = ?, Statut_Compte = ?, Notes_Commentaires = ?,
-                Updated_At = datetime('now')
+                Updated_At = strftime('%Y-%m-%d %H:%M:%f', 'now')
              WHERE ID_Personne = ? AND COALESCE(Updated_At, '') = COALESCE(?, '')",
             rusqlite::params![
                 personne.civilite,
@@ -124,7 +124,7 @@ pub fn sauvegarder_personne(app: AppHandle, personne: PersonneInput) -> Result<P
                  Adresse_Privee, Code_Postal_Prive, Commune_Privee, Pays,
                  Consentement_RGPD, Date_Consentement, Statut_Compte,
                  Notes_Commentaires, Date_Creation, Updated_At)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, date('now'), datetime('now'))",
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, date('now'), strftime('%Y-%m-%d %H:%M:%f', 'now'))",
             rusqlite::params![
                 personne.civilite,
                 personne.nom,
@@ -152,20 +152,5 @@ pub fn supprimer_personne(app: AppHandle, id: i64) -> Result<(), String> {
     let conn = db::get_conn(&app)?;
     auth::require_permission(&conn, "personnes.delete")?;
     ensure_resource_not_locked_by_other(&conn, "personnes", id)?;
-    conn.execute(
-        "DELETE FROM T_Affiliations WHERE Ref_Personne = ?",
-        rusqlite::params![id],
-    )
-    .map_err(|e| e.to_string())?;
-    conn.execute(
-        "UPDATE T_Presences SET Ref_Personne = NULL WHERE Ref_Personne = ?",
-        rusqlite::params![id],
-    )
-    .map_err(|e| e.to_string())?;
-    conn.execute(
-        "DELETE FROM T_Personnes WHERE ID_Personne = ?",
-        rusqlite::params![id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    crate::services::people::delete_person(&conn, id)
 }

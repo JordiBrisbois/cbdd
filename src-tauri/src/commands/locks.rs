@@ -22,13 +22,13 @@ pub fn acquire_edit_lock(
 
     let existing = conn
         .query_row(
-            "SELECT Holder_User_Id, Holder_Label, Expires_At
+            "SELECT Holder_Token, Holder_Label, Expires_At
              FROM T_EditLocks
              WHERE Resource_Type = ? AND Resource_Id = ?",
             rusqlite::params![resource_type, resource_id],
             |row| {
                 Ok((
-                    row.get::<_, Option<i64>>(0)?,
+                    row.get::<_, Option<String>>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
                 ))
@@ -37,8 +37,9 @@ pub fn acquire_edit_lock(
         .optional()
         .map_err(|e| e.to_string())?;
 
-    if let Some((existing_user_id, existing_label, expires_at)) = existing {
-        if existing_user_id == user_id {
+    let holder_token = edit_lock_token();
+    if let Some((existing_token, existing_label, expires_at)) = existing {
+        if existing_token.as_deref() == Some(holder_token) {
             conn.execute(
                 "UPDATE T_EditLocks
                  SET Holder_Label = ?, Machine_Label = ?, Acquired_At = datetime('now'),
@@ -80,9 +81,9 @@ pub fn acquire_edit_lock(
         .map_err(|e| e.to_string())?;
 
     conn.execute(
-        "INSERT INTO T_EditLocks (Resource_Type, Resource_Id, Holder_User_Id, Holder_Label, Machine_Label, Expires_At)
-         VALUES (?, ?, ?, ?, ?, ?)",
-        rusqlite::params![resource_type, resource_id, user_id, holder_label, machine, expires_at],
+        "INSERT INTO T_EditLocks (Resource_Type, Resource_Id, Holder_User_Id, Holder_Token, Holder_Label, Machine_Label, Expires_At)
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
+        rusqlite::params![resource_type, resource_id, user_id, holder_token, holder_label, machine, expires_at],
     )
     .map_err(|e| e.to_string())?;
 
@@ -106,11 +107,10 @@ pub fn release_edit_lock(
         .ok_or_else(|| "Type de ressource de verrou inconnu".to_string())?;
     auth::require_permission(&conn, permission)?;
 
-    let (user_id, _) = auth::current_actor_label(&conn)?;
     conn.execute(
         "DELETE FROM T_EditLocks
-         WHERE Resource_Type = ? AND Resource_Id = ? AND Holder_User_Id IS ?",
-        rusqlite::params![resource_type, resource_id, user_id],
+         WHERE Resource_Type = ? AND Resource_Id = ? AND Holder_Token = ?",
+        rusqlite::params![resource_type, resource_id, edit_lock_token()],
     )
     .map_err(|e| e.to_string())?;
     Ok(())

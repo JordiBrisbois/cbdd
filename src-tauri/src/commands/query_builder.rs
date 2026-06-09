@@ -124,6 +124,30 @@ fn extract_alias(champ: &str) -> &str {
     champ.split('.').next().unwrap_or("")
 }
 
+fn permission_for_alias(alias: &str) -> Option<&'static str> {
+    match alias {
+        "p" => Some("personnes.read"),
+        "s" => Some("structures.read"),
+        "a" | "f" => Some("affiliations.read"),
+        "c" => Some("categories.read"),
+        "r" => Some("reunions.read"),
+        "pr" => Some("presences.read"),
+        _ => None,
+    }
+}
+
+fn require_query_permissions(
+    conn: &rusqlite::Connection,
+    aliases: &std::collections::HashSet<&str>,
+) -> Result<(), String> {
+    for alias in aliases {
+        let permission = permission_for_alias(alias)
+            .ok_or_else(|| format!("Alias de recherche inconnu: {alias}"))?;
+        auth::require_permission(conn, permission)?;
+    }
+    Ok(())
+}
+
 fn normalize_query_operator(operator: &str) -> String {
     operator.trim().to_lowercase().replace([' ', '-'], "_")
 }
@@ -288,14 +312,16 @@ pub fn executer_requete_impl(
     auth::require_permission(&conn, "search.read")?;
 
     let table = table_principale.to_lowercase();
-    let main_meta = match table.as_str() {
-        "personnes" => alias_to_table("p").unwrap(),
-        "structures" => alias_to_table("s").unwrap(),
-        "affiliations" => alias_to_table("a").unwrap(),
-        "reunions" => alias_to_table("r").unwrap(),
-        "presences" => alias_to_table("pr").unwrap(),
+    let main_alias = match table.as_str() {
+        "personnes" => "p",
+        "structures" => "s",
+        "affiliations" => "a",
+        "reunions" => "r",
+        "presences" => "pr",
         _ => return Err(format!("Table inconnue: {}", table_principale)),
     };
+    let main_meta = alias_to_table(main_alias)
+        .ok_or_else(|| format!("Configuration de table manquante pour l'alias {main_alias}"))?;
 
     let mut needed_aliases = std::collections::HashSet::new();
     needed_aliases.insert(main_meta.alias);
@@ -306,6 +332,7 @@ pub fn executer_requete_impl(
     for cond in &conditions {
         needed_aliases.insert(extract_alias(&cond.champ));
     }
+    require_query_permissions(&conn, &needed_aliases)?;
 
     let mut select_parts = Vec::new();
     for col in &colonnes {
@@ -521,7 +548,7 @@ pub fn executer_requete_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_query_operator;
+    use super::{normalize_query_operator, permission_for_alias};
 
     #[test]
     fn normalizes_query_operators_from_search_page() {
@@ -546,6 +573,24 @@ mod tests {
 
         for (input, expected) in cases {
             assert_eq!(normalize_query_operator(input), expected);
+        }
+    }
+
+    #[test]
+    fn maps_query_aliases_to_domain_permissions() {
+        let cases = [
+            ("p", Some("personnes.read")),
+            ("s", Some("structures.read")),
+            ("a", Some("affiliations.read")),
+            ("f", Some("affiliations.read")),
+            ("c", Some("categories.read")),
+            ("r", Some("reunions.read")),
+            ("pr", Some("presences.read")),
+            ("unknown", None),
+        ];
+
+        for (alias, expected) in cases {
+            assert_eq!(permission_for_alias(alias), expected);
         }
     }
 }

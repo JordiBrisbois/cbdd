@@ -182,7 +182,7 @@ pub fn sauvegarder_affiliation(
                 Titre_Specifique = ?, Service_Specifique = ?,
                 Email_Professionnel = ?, Telephone_Direct = ?,
                 Gsm_Professionnel = ?, Date_Debut = ?, Date_Fin = ?,
-                Notes_Commentaires = ?, ID_Categorie = ?, Updated_At = datetime('now')
+                Notes_Commentaires = ?, ID_Categorie = ?, Updated_At = strftime('%Y-%m-%d %H:%M:%f', 'now')
              WHERE ID_Affiliation = ? AND COALESCE(Updated_At, '') = COALESCE(?, '')",
             rusqlite::params![
                 aff.ref_personne,
@@ -234,7 +234,7 @@ pub fn sauvegarder_affiliation(
                  Service_Specifique, Email_Professionnel, Telephone_Direct,
                  Gsm_Professionnel, Date_Debut, Date_Fin, Notes_Commentaires,
                  ID_Categorie, Updated_At)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?, ?, datetime('now'))",
+             VALUES (?,?,?,?,?,?,?,?,?,?,?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
             rusqlite::params![
                 aff.ref_personne,
                 aff.ref_structure,

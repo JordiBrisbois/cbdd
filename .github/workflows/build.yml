@@ -23,5 +23,19 @@ jobs:
 
       - run: npm ci
 
+      - name: Lint frontend
+        run: npm run lint
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+
+      - name: Test Rust backend
+        working-directory: src-tauri
+        run: cargo test --all-targets
+
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
       - name: Build Tauri app
         run: npm run tauri build

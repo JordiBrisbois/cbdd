@@ -1,7 +1,7 @@
 {
   "name": "crvi-bdd",
   "private": true,
-  "version": "2.0.2",
+  "version": "2.0.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -20,7 +20,7 @@
     "react-dom": "^19.2.6",
     "react-hot-toast": "^2.6.0",
     "tailwindcss": "^4.3.0",
-    "xlsx": "^0.18.5"
+    "write-excel-file": "^4.0.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

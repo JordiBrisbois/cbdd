@@ -1,4 +1,5 @@
 import { useState } from "react";
+import toast from "react-hot-toast";
 import { Modal } from "../components/Modal";
 import { Icon } from "../lib/ui";
 
@@ -16,7 +17,7 @@ export function TableExportModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onConfirm: (scope: TableExportScope, format: TableExportFormat) => void;
+  onConfirm: (scope: TableExportScope, format: TableExportFormat) => Promise<void> | void;
   currentLabel?: string;
   currentDescription?: string;
   rawLabel?: string;
@@ -24,6 +25,19 @@ export function TableExportModal({
 }) {
   const [scope, setScope] = useState<TableExportScope>("current");
   const [format, setFormat] = useState<TableExportFormat>("csv");
+  const [exporting, setExporting] = useState(false);
+
+  const confirmExport = async () => {
+    setExporting(true);
+    try {
+      await onConfirm(scope, format);
+      onClose();
+    } catch (error) {
+      toast.error(`Impossible d'exporter les données: ${String(error)}`);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <Modal open={open} onClose={onClose} title="Exporter les donnees">
@@ -89,13 +103,11 @@ export function TableExportModal({
             Annuler
           </button>
           <button
-            onClick={() => {
-              onConfirm(scope, format);
-              onClose();
-            }}
-            className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            onClick={() => void confirmExport()}
+            disabled={exporting}
+            className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <Icon name="download" className="size-4" /> Exporter
+            <Icon name="download" className="size-4" /> {exporting ? "Export en cours..." : "Exporter"}
           </button>
         </div>
       </div>

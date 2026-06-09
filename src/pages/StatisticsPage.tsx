@@ -275,7 +275,7 @@ export function StatisticsPage() {
     };
   }, [filters]);
 
-  const exportDashboard = () => {
+  const exportDashboard = async () => {
     if (!stats) return;
     setExporting(true);
     try {
@@ -331,7 +331,7 @@ export function StatisticsPage() {
           rows: stats.top_people_presence.map((item) => [item.label, String(item.invitations), String(item.presents), item.presence_rate.toFixed(1)]),
         },
       ];
-      exportWorkbook(sheets, `stats_crvi_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      await exportWorkbook(sheets, `stats_crvi_${new Date().toISOString().slice(0, 10)}.xlsx`);
       toast.success("Export Excel du dashboard généré");
     } catch (error) {
       toast.error(String(error));

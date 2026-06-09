@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+import writeXlsxFile, { type Sheet } from "write-excel-file/browser";
 
 export function exportCSV(headers: string[], rows: string[][], filename: string) {
   const bom = "\uFEFF";
@@ -14,33 +14,29 @@ export function exportCSV(headers: string[], rows: string[][], filename: string)
   URL.revokeObjectURL(url);
 }
 
-export function exportExcel(headers: string[], rows: string[][], filename: string) {
-  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Export");
-  XLSX.writeFile(workbook, filename, { bookType: "xlsx", compression: true });
+export async function exportExcel(headers: string[], rows: string[][], filename: string) {
+  await writeXlsxFile([[...headers], ...rows], { sheet: "Export" }).toFile(filename);
 }
 
-export function exportWorkbook(
+export async function exportWorkbook(
   sheets: { name: string; headers: string[]; rows: string[][] }[],
   filename: string,
 ) {
-  const workbook = XLSX.utils.book_new();
-  sheets.forEach((sheet) => {
-    const worksheet = XLSX.utils.aoa_to_sheet([sheet.headers, ...sheet.rows]);
-    XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name.slice(0, 31));
-  });
-  XLSX.writeFile(workbook, filename, { bookType: "xlsx", compression: true });
+  const workbook: Sheet<Blob>[] = sheets.map((sheet) => ({
+    name: sheet.name.slice(0, 31),
+    data: [[...sheet.headers], ...sheet.rows],
+  }));
+  await writeXlsxFile(workbook).toFile(filename);
 }
 
-export function exportTableFile(
+export async function exportTableFile(
   headers: string[],
   rows: string[][],
   filenameBase: string,
   format: "csv" | "excel",
 ) {
   if (format === "excel") {
-    exportExcel(headers, rows, `${filenameBase}.xlsx`);
+    await exportExcel(headers, rows, `${filenameBase}.xlsx`);
     return;
   }
   exportCSV(headers, rows, `${filenameBase}.csv`);

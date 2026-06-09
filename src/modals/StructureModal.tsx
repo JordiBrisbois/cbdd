@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import toast from "react-hot-toast";
 import type { Structure, StructureInput, Categorie, AffiliationAvecDetails, Personne, Fonction } from "../types";
 import { useAuth } from "../lib/auth";
@@ -7,6 +7,8 @@ import { Modal } from "../components/Modal";
 import { useEditLock } from "../hooks/useEditLock";
 import { Field, Label, Icon } from "../lib/ui";
 import { AffiliationModal } from "./AffiliationModal";
+import { useAffiliations } from "../hooks/useAffiliations";
+import { AffiliationsTable } from "../components/AffiliationsTable";
 
 export function StructureModal({
   structure,
@@ -39,7 +41,6 @@ export function StructureModal({
     id_categorie: structure.id_categorie,
     original_updated_at: structure.updated_at,
   });
-  const [affiliations, setAffiliations] = useState<AffiliationAvecDetails[]>([]);
   const [showAffModal, setShowAffModal] = useState(false);
   const [editAff, setEditAff] = useState<AffiliationAvecDetails | null>(null);
   const [duplicateStructure, setDuplicateStructure] = useState<Structure | null>(null);
@@ -52,22 +53,11 @@ export function StructureModal({
   const canDeleteAffiliation = can("affiliations.delete");
   const { lockStatus, lockBlocked } = useEditLock("structures", structure.id_structure, canSave && !!structure.id_structure);
   const canMutateAffiliations = !lockBlocked;
-
-  useEffect(() => {
-    if (structure.id_structure) {
-      invoke<AffiliationAvecDetails[]>("lister_affiliations_structure", { structureId: structure.id_structure })
-        .then(setAffiliations)
-        .catch(() => {});
-    }
-  }, [structure.id_structure]);
-
-  const loadAffs = () => {
-    if (structure.id_structure) {
-      invoke<AffiliationAvecDetails[]>("lister_affiliations_structure", { structureId: structure.id_structure })
-        .then(setAffiliations)
-        .catch(() => {});
-    }
-  };
+  const affiliationOwner = useMemo(
+    () => structure.id_structure ? { structureId: structure.id_structure } : null,
+    [structure.id_structure],
+  );
+  const { data: affiliations, reload: loadAffs } = useAffiliations(affiliationOwner);
 
   const save = async () => {
     if (!canSave || lockBlocked) return;
@@ -174,68 +164,17 @@ export function StructureModal({
               </button>
             )}
           </div>
-          {affiliations.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Aucune affiliation</p>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b bg-muted/50 text-left">
-                    <th className="px-3 py-2 font-medium text-muted-foreground">Nom</th>
-                    <th className="px-3 py-2 font-medium text-muted-foreground">Prénom</th>
-                    <th className="px-3 py-2 font-medium text-muted-foreground">Fonction</th>
-                    <th className="px-3 py-2 font-medium text-muted-foreground">Catégorie</th>
-                    <th className="px-3 py-2 font-medium text-muted-foreground">Intitulé</th>
-                    <th className="px-3 py-2 font-medium text-muted-foreground">Email pro</th>
-                    <th className="px-3 py-2 font-medium text-muted-foreground">Tél. fixe pro</th>
-                    <th className="px-3 py-2 font-medium text-muted-foreground">GSM pro</th>
-                    <th className="px-3 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {affiliations.map((a) => (
-                    <tr key={a.id_affiliation} className="border-b last:border-0">
-                      <td className="px-3 py-2 font-medium">{a.nom_personne || "—"}</td>
-                      <td className="px-3 py-2">{a.prenom_personne || "—"}</td>
-                      <td className="px-3 py-2">{a.libelle_fonction || "—"}</td>
-                      <td className="px-3 py-2">{a.nom_categorie || "—"}</td>
-                      <td className="px-3 py-2">{a.titre_specifique || "—"}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{a.email_professionnel || "—"}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{a.telephone_direct || "—"}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{a.gsm_professionnel || "—"}</td>
-                      <td className="px-3 py-2 flex gap-1">
-                        {canEditAffiliation && (
-                          <button
-                            onClick={() => {
-                              setEditAff(a);
-                              setShowAffModal(true);
-                            }}
-                            disabled={!canMutateAffiliations}
-                            className="cursor-pointer text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            <Icon name="edit" className="size-4" />
-                          </button>
-                        )}
-                        {canDeleteAffiliation && (
-                          <button
-                            onClick={async () => {
-                              if (!canMutateAffiliations) return;
-                              try { await invoke("supprimer_affiliation", { id: a.id_affiliation }); } catch (e) { toast.error(String(e)); }
-                              loadAffs();
-                            }}
-                            disabled={!canMutateAffiliations}
-                            className="cursor-pointer text-red-500 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            <Icon name="trash" className="size-4" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <AffiliationsTable affiliations={affiliations} perspective="structure"
+            canEdit={canEditAffiliation} canDelete={canDeleteAffiliation} disabled={!canMutateAffiliations}
+            onEdit={(affiliation) => { setEditAff(affiliation); setShowAffModal(true); }}
+            onDelete={async (affiliation) => {
+              try {
+                await invoke("supprimer_affiliation", { id: affiliation.id_affiliation });
+                await loadAffs();
+              } catch (error) {
+                toast.error(String(error));
+              }
+            }} />
         </div>
       )}
 
@@ -293,7 +232,7 @@ export function StructureModal({
           onClose={async () => {
             setShowAffModal(false);
             setEditAff(null);
-            loadAffs();
+            await loadAffs().catch(() => {});
           }}
         />
       )}

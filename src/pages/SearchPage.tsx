@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { ReactNode } from "react";
 import type { Categorie, Condition, Fonction, Personne, Preset, Structure } from "../types";
 import { invoke } from "../lib/tauri";
@@ -16,6 +16,14 @@ import toast from "react-hot-toast";
 
 import { QB_FIELDS, QB_TABLES, QB_OPERATORS } from "../lib/queryBuilderConfig";
 import { useOpenEntity } from "../hooks/useOpenEntity";
+import { useAsyncData } from "../hooks/useAsyncData";
+
+type SearchReferences = {
+  categories: Categorie[];
+  structures: Structure[];
+  personnes: Personne[];
+  fonctions: Fonction[];
+};
 
 export function SearchPage() {
   const {
@@ -31,53 +39,67 @@ export function SearchPage() {
   const [results, setResults] = useState<Record<string, string>[]>([]);
   const [loading, setLoading] = useState(false);
   const [showColPicker, setShowColPicker] = useState(false);
-  const [presets, setPresets] = useState<Preset[]>([]);
   const [presetName, setPresetName] = useState("");
   const [showPresetForm, setShowPresetForm] = useState(false);
   const [showCopyModal, setShowCopyModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [categories, setCategories] = useState<Categorie[]>([]);
-  const [structures, setStructures] = useState<Structure[]>([]);
-  const [personnes, setPersonnes] = useState<Personne[]>([]);
-  const [fonctions, setFonctions] = useState<Fonction[]>([]);
-
-  const loadPresets = useCallback(async () => {
-    const p = await invoke<Preset[]>("lister_presets").catch(() => []);
-    setPresets(p);
+  const loadPresets = useCallback(() => invoke<Preset[]>("lister_presets"), []);
+  const { data: presets, reload: reloadPresets } = useAsyncData(loadPresets, [], {
+    errorMessage: "Impossible de charger les presets",
+  });
+  const loadReferences = useCallback(async (): Promise<SearchReferences> => {
+    const [categories, structures, personnes, fonctions] = await Promise.allSettled([
+      invoke<Categorie[]>("lister_categories"),
+      invoke<Structure[]>("lister_structures"),
+      invoke<Personne[]>("lister_personnes"),
+      invoke<Fonction[]>("lister_fonctions"),
+    ]);
+    return {
+      categories: categories.status === "fulfilled" ? categories.value : [],
+      structures: structures.status === "fulfilled" ? structures.value : [],
+      personnes: personnes.status === "fulfilled" ? personnes.value : [],
+      fonctions: fonctions.status === "fulfilled" ? fonctions.value : [],
+    };
   }, []);
-  useEffect(() => { loadPresets(); }, [loadPresets]);
-  useEffect(() => {
-    void invoke<Categorie[]>("lister_categories").then(setCategories).catch(() => setCategories([]));
-    void invoke<Structure[]>("lister_structures").then(setStructures).catch(() => setStructures([]));
-    void invoke<Personne[]>("lister_personnes").then(setPersonnes).catch(() => setPersonnes([]));
-    void invoke<Fonction[]>("lister_fonctions").then(setFonctions).catch(() => setFonctions([]));
-  }, []);
+  const { data: references } = useAsyncData<SearchReferences>(
+    loadReferences,
+    { categories: [], structures: [], personnes: [], fonctions: [] },
+    { errorMessage: "Impossible de charger les données de référence" },
+  );
+  const { categories, structures, personnes, fonctions } = references;
 
   const savePreset = async () => {
     if (!presetName.trim()) { toast.error("Nom du preset requis"); return; }
-    await invoke("sauvegarder_preset", {
-      preset: { id_preset: null, nom_preset: presetName.trim(), table_principale: selectedTable, colonnes: JSON.stringify(selectedCols), conditions: JSON.stringify(conditions) }
-    }).catch((e) => toast.error(String(e)));
-    toast.success("Preset enregistré");
-    setPresetName("");
-    setShowPresetForm(false);
-    loadPresets();
+    try {
+      await invoke("sauvegarder_preset", {
+        preset: { id_preset: null, nom_preset: presetName.trim(), table_principale: selectedTable, colonnes: JSON.stringify(selectedCols), conditions: JSON.stringify(conditions) }
+      });
+      toast.success("Preset enregistré");
+      setPresetName("");
+      setShowPresetForm(false);
+      void reloadPresets().catch(() => {});
+    } catch (error) {
+      toast.error(String(error));
+    }
   };
 
   const loadPreset = async (id: number) => {
-    const p = await invoke<Preset>("charger_preset", { id }).catch(() => null);
-    if (!p) { toast.error("Preset introuvable"); return; }
-    setSelectedTable(p.table_principale);
-    try { setSelectedCols(JSON.parse(p.colonnes)); } catch { setSelectedCols([]); }
-    try { setConditions(JSON.parse(p.conditions)); } catch { setConditions([]); }
-    setResults([]);
-    toast.success(`Preset "${p.nom_preset}" chargé`);
+    try {
+      const p = await invoke<Preset>("charger_preset", { id });
+      setSelectedTable(p.table_principale);
+      try { setSelectedCols(JSON.parse(p.colonnes)); } catch { setSelectedCols([]); }
+      try { setConditions(JSON.parse(p.conditions)); } catch { setConditions([]); }
+      setResults([]);
+      toast.success(`Preset "${p.nom_preset}" chargé`);
+    } catch (error) {
+      toast.error(`Impossible de charger le preset: ${String(error)}`);
+    }
   };
 
   const deletePreset = async (id: number) => {
     if (confirm("Supprimer ce preset ?")) {
       try { await invoke("supprimer_preset", { id }); toast.success("Preset supprimé"); } catch (e) { toast.error(String(e)); }
-      loadPresets();
+      void reloadPresets().catch(() => {});
     }
   };
 
@@ -116,12 +138,12 @@ export function SearchPage() {
     setLoading(false);
   };
 
-  const exportResults = (scope: TableExportScope, format: TableExportFormat) => {
+  const exportResults = async (scope: TableExportScope, format: TableExportFormat) => {
     if (results.length === 0) return;
     const columnsToUse = scope === "current" ? selectedCols : selectedCols;
     const headers = columnsToUse.map(c => { const f = allFields.find(x => x.key === c); return f ? `${f.group} > ${f.label}` : c; });
     const rows = results.map(row => columnsToUse.map(c => row[c.split('.').pop()!] || ""));
-    exportTableFile(headers, rows, `query_${selectedTable}_${new Date().toISOString().slice(0, 10)}`, format);
+    await exportTableFile(headers, rows, `query_${selectedTable}_${new Date().toISOString().slice(0, 10)}`, format);
     toast.success(`${results.length} résultats exportés`);
   };
 
@@ -331,7 +353,7 @@ export function SearchPage() {
       {results.length > 0 && (
         <DataTable
           config={config}
-          data={results as unknown as Record<string, unknown>[]}
+          data={results}
           loading={loading}
           renderers={renderers}
           onRowClick={(item) => { void openResult(item); }}

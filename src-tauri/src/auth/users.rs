@@ -52,17 +52,18 @@ pub fn save_user(conn: &Connection, user: UserInput) -> Result<UserSummary, Stri
     }
 
     let role_ids = dedupe_i64(user.role_ids);
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
 
     let user_id = if let Some(id) = user.id_user {
-        let existing_role_codes = load_role_codes_for_user(conn, id)?;
+        let existing_role_codes = load_role_codes_for_user(&tx, id)?;
         let is_currently_admin = existing_role_codes
             .iter()
             .any(|code| code == ADMIN_ROLE_CODE);
-        if is_currently_admin && !user.is_active && count_admin_users(conn)? <= 1 {
+        if is_currently_admin && !user.is_active && count_admin_users(&tx)? <= 1 {
             return Err("Impossible de désactiver le dernier administrateur actif".into());
         }
 
-        conn.execute(
+        tx.execute(
             "UPDATE T_Users
              SET Username = ?, Display_Name = ?, Is_Active = ?, Must_Change_Password = ?, Updated_At = datetime('now')
              WHERE ID_User = ?",
@@ -82,8 +83,11 @@ pub fn save_user(conn: &Connection, user: UserInput) -> Result<UserSummary, Stri
             .as_deref()
             .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| "Le mot de passe est requis".to_string())?;
+        if password.chars().count() < 8 {
+            return Err("Le mot de passe doit contenir au moins 8 caractères".into());
+        }
         let hash = hash_password(password)?;
-        conn.execute(
+        tx.execute(
             "INSERT INTO T_Users (Username, Password_Hash, Display_Name, Is_Active, Must_Change_Password)
              VALUES (?, ?, ?, ?, ?)",
             params![
@@ -95,10 +99,11 @@ pub fn save_user(conn: &Connection, user: UserInput) -> Result<UserSummary, Stri
             ],
         )
         .map_err(|e| e.to_string())?;
-        conn.last_insert_rowid()
+        tx.last_insert_rowid()
     };
 
-    replace_user_roles(conn, user_id, &role_ids)?;
+    replace_user_roles_impl(&tx, user_id, &role_ids)?;
+    tx.commit().map_err(|e| e.to_string())?;
     get_user_impl(conn, user_id)
 }
 
@@ -206,7 +211,11 @@ fn get_user_impl(conn: &Connection, user_id: i64) -> Result<UserSummary, String>
     })
 }
 
-fn replace_user_roles(conn: &Connection, user_id: i64, role_ids: &[i64]) -> Result<(), String> {
+fn replace_user_roles_impl(
+    conn: &Connection,
+    user_id: i64,
+    role_ids: &[i64],
+) -> Result<(), String> {
     if load_role_codes_for_user(conn, user_id)?
         .iter()
         .any(|code| code == ADMIN_ROLE_CODE)
@@ -229,7 +238,6 @@ fn replace_user_roles(conn: &Connection, user_id: i64, role_ids: &[i64]) -> Resu
         )
         .map_err(|e| e.to_string())?;
     }
-
     Ok(())
 }
 

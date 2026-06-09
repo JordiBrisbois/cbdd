@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import toast from "react-hot-toast";
 import type { Personne, PersonneInput, Categorie, AffiliationAvecDetails, Structure, Fonction } from "../types";
 import { useAuth } from "../lib/auth";
@@ -8,6 +8,8 @@ import { normalizeLastNameInput } from "../lib/format";
 import { useEditLock } from "../hooks/useEditLock";
 import { Icon, Label, Field } from "../lib/ui";
 import { AffiliationModal } from "./AffiliationModal";
+import { useAffiliations } from "../hooks/useAffiliations";
+import { AffiliationsTable } from "../components/AffiliationsTable";
 
 const CONTACT_STATUSES = [
   { value: "Actif", label: "Actif" },
@@ -26,7 +28,6 @@ export function ContactModal({ personne, onClose, categories }: { personne: Pers
     notes_commentaires: personne.notes_commentaires,
     original_updated_at: personne.updated_at,
   });
-  const [affiliations, setAffiliations] = useState<AffiliationAvecDetails[]>([]);
   const [structures, setStructures] = useState<Structure[]>([]);
   const [fonctions, setFonctions] = useState<Fonction[]>([]);
   const [showAffModal, setShowAffModal] = useState(false);
@@ -40,18 +41,20 @@ export function ContactModal({ personne, onClose, categories }: { personne: Pers
   const canDeleteAffiliation = can("affiliations.delete");
   const { lockStatus, lockBlocked } = useEditLock("personnes", personne.id_personne, canSavePerson && !!personne.id_personne);
   const canMutateAffiliations = !lockBlocked;
-
-  useEffect(() => { if (personne.id_personne) {
-    invoke<AffiliationAvecDetails[]>("lister_affiliations_personne", { personneId: personne.id_personne }).then(setAffiliations).catch(() => {});
-  }}, [personne.id_personne]);
-  useEffect(() => { invoke<Structure[]>("lister_structures").then(setStructures).catch(() => {});
-    invoke<Fonction[]>("lister_fonctions").then(setFonctions).catch(() => {}); }, []);
-
-  const loadAffs = () => {
-    if (personne.id_personne) {
-      invoke<AffiliationAvecDetails[]>("lister_affiliations_personne", { personneId: personne.id_personne }).then(setAffiliations).catch(() => {});
-    }
-  };
+  const affiliationOwner = useMemo(
+    () => personne.id_personne ? { personneId: personne.id_personne } : null,
+    [personne.id_personne],
+  );
+  const { data: affiliations, reload: loadAffs } = useAffiliations(affiliationOwner);
+  useEffect(() => {
+    void Promise.allSettled([
+      invoke<Structure[]>("lister_structures"),
+      invoke<Fonction[]>("lister_fonctions"),
+    ]).then(([nextStructures, nextFunctions]) => {
+      setStructures(nextStructures.status === "fulfilled" ? nextStructures.value : []);
+      setFonctions(nextFunctions.status === "fulfilled" ? nextFunctions.value : []);
+    });
+  }, []);
 
   const save = async () => {
     if (!canSavePerson || lockBlocked) return;
@@ -160,49 +163,17 @@ export function ContactModal({ personne, onClose, categories }: { personne: Pers
             <Icon name="plus" className="size-3.5" /> Ajouter
           </button>}
         </div>
-        {affiliations.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Aucune affiliation</p>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full text-xs">
-              <thead><tr className="border-b bg-muted/50 text-left">
-                <th className="px-3 py-2 font-medium text-muted-foreground">Structure</th>
-                <th className="px-3 py-2 font-medium text-muted-foreground">Fonction</th>
-                <th className="px-3 py-2 font-medium text-muted-foreground">Catégorie</th>
-                <th className="px-3 py-2 font-medium text-muted-foreground">Intitulé</th>
-                <th className="px-3 py-2 font-medium text-muted-foreground">Email pro</th>
-                <th className="px-3 py-2 font-medium text-muted-foreground">Tél. fixe pro</th>
-                <th className="px-3 py-2 font-medium text-muted-foreground">GSM pro</th>
-                <th className="px-3 py-2"></th>
-              </tr></thead>
-              <tbody>
-                {affiliations.map((a) => (
-                  <tr key={a.id_affiliation} className="border-b last:border-0">
-                    <td className="px-3 py-2 font-medium">{a.nom_structure || "—"}</td>
-                    <td className="px-3 py-2">{a.libelle_fonction || "—"}</td>
-                    <td className="px-3 py-2">{a.nom_categorie || "—"}</td>
-                    <td className="px-3 py-2">{a.titre_specifique || "—"}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{a.email_professionnel || "—"}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{a.telephone_direct || "—"}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{a.gsm_professionnel || "—"}</td>
-                    <td className="px-3 py-2 flex gap-1">
-                      {canEditAffiliation && <button onClick={() => { setEditAff(a); setShowAffModal(true); }} disabled={!canMutateAffiliations} className="cursor-pointer text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60">
-                        <Icon name="edit" className="size-4" />
-                      </button>}
-                      {canDeleteAffiliation && <button disabled={!canMutateAffiliations} onClick={async () => {
-                        if (!canMutateAffiliations) return;
-                        try { await invoke("supprimer_affiliation", { id: a.id_affiliation }); } catch (e) { toast.error(String(e)); }
-                        loadAffs();
-                      }} className="cursor-pointer text-red-500 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60">
-                        <Icon name="trash" className="size-4" />
-                      </button>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <AffiliationsTable affiliations={affiliations} perspective="personne"
+          canEdit={canEditAffiliation} canDelete={canDeleteAffiliation} disabled={!canMutateAffiliations}
+          onEdit={(affiliation) => { setEditAff(affiliation); setShowAffModal(true); }}
+          onDelete={async (affiliation) => {
+            try {
+              await invoke("supprimer_affiliation", { id: affiliation.id_affiliation });
+              await loadAffs();
+            } catch (error) {
+              toast.error(String(error));
+            }
+          }} />
       </div>
       )}
 
@@ -241,7 +212,7 @@ export function ContactModal({ personne, onClose, categories }: { personne: Pers
       )}
 
       {showAffModal && canReadAffiliations && <AffiliationModal personneId={personne.id_personne!} structures={structures} fonctions={fonctions} categories={categories}
-        existing={editAff} onClose={async () => { setShowAffModal(false); setEditAff(null); loadAffs(); }} />}
+        existing={editAff} onClose={async () => { setShowAffModal(false); setEditAff(null); await loadAffs().catch(() => {}); }} />}
     </Modal>
   );
 }

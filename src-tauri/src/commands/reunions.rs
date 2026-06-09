@@ -80,7 +80,7 @@ pub fn sauvegarder_reunion(app: AppHandle, reunion: ReunionInput) -> Result<Reun
             "UPDATE T_Reunions SET
                 Titre_Reunion = ?, Date_Reunion = ?, Heure_Reunion = ?,
                 Lieu_Reunion = ?, Ref_Structure = ?, Notes_Commentaires = ?,
-                Updated_At = datetime('now')
+                Updated_At = strftime('%Y-%m-%d %H:%M:%f', 'now')
              WHERE ID_Reunion = ? AND COALESCE(Updated_At, '') = COALESCE(?, '')",
             rusqlite::params![
                 reunion.titre_reunion,
@@ -103,7 +103,7 @@ pub fn sauvegarder_reunion(app: AppHandle, reunion: ReunionInput) -> Result<Reun
             "INSERT INTO T_Reunions
                 (Titre_Reunion, Date_Reunion, Heure_Reunion, Lieu_Reunion,
                  Ref_Structure, Notes_Commentaires, Updated_At)
-             VALUES (?,?,?,?,?,?, datetime('now'))",
+             VALUES (?,?,?,?,?,?, strftime('%Y-%m-%d %H:%M:%f', 'now'))",
             rusqlite::params![
                 reunion.titre_reunion,
                 reunion.date_reunion,
@@ -124,15 +124,5 @@ pub fn supprimer_reunion(app: AppHandle, id: i64) -> Result<(), String> {
     let conn = db::get_conn(&app)?;
     auth::require_permission(&conn, "reunions.delete")?;
     ensure_resource_not_locked_by_other(&conn, "reunions", id)?;
-    conn.execute(
-        "DELETE FROM T_Presences WHERE Ref_Reunion = ?",
-        rusqlite::params![id],
-    )
-    .map_err(|e| e.to_string())?;
-    conn.execute(
-        "DELETE FROM T_Reunions WHERE ID_Reunion = ?",
-        rusqlite::params![id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    crate::services::meetings::delete_meeting(&conn, id)
 }

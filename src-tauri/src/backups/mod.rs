@@ -284,20 +284,40 @@ pub fn restore_backup(
         }
     }
 
+    let rollback_path = db_path.with_extension("restore_rollback.sqlite");
+    if rollback_path.exists() {
+        fs::remove_file(&rollback_path)
+            .map_err(|e| format!("Impossible de nettoyer l'ancien rollback: {e}"))?;
+    }
     if db_path.exists() {
-        fs::remove_file(&db_path).map_err(|e| {
-            format!("Impossible de remplacer la base actuelle. Vérifiez que les autres postes ne l'utilisent pas: {}", e)
+        fs::rename(&db_path, &rollback_path).map_err(|e| {
+            format!("Impossible de préparer le remplacement de la base actuelle: {e}")
         })?;
     }
-    fs::rename(&temp_target, &db_path)
-        .map_err(|e| format!("Impossible de finaliser la restauration: {}", e))?;
+    if let Err(error) = fs::rename(&temp_target, &db_path) {
+        if rollback_path.exists() {
+            let _ = fs::rename(&rollback_path, &db_path);
+        }
+        return Err(format!("Impossible de finaliser la restauration: {error}"));
+    }
 
-    db::connect(&db_path.to_string_lossy())
-        .map_err(|e| format!("Base restaurée mais reconnexion impossible: {}", e))?;
-
+    if let Err(error) = db::connect(&db_path.to_string_lossy()) {
+        let _ = fs::remove_file(&db_path);
+        if rollback_path.exists() {
+            let _ = fs::rename(&rollback_path, &db_path);
+            let _ = db::connect(&db_path.to_string_lossy());
+        }
+        return Err(format!(
+            "Base restaurée mais reconnexion impossible: {error}"
+        ));
+    }
     let conn = db::get_conn(app)
         .map_err(|e| format!("Base restaurée mais validation d'accès impossible: {}", e))?;
     let recovered_admin = auth::recover_admin_access(&conn, preferred_admin_username)?;
+    if rollback_path.exists() {
+        fs::remove_file(&rollback_path)
+            .map_err(|e| format!("Base restaurée, mais nettoyage du rollback impossible: {e}"))?;
+    }
 
     let backup_metadata = fs::metadata(&backup).map_err(|e| e.to_string())?;
     let admin_message = recovered_admin

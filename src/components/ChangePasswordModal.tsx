@@ -6,9 +6,11 @@ import { Modal } from "./Modal";
 export function ChangePasswordModal({
   onClose,
   onChanged,
+  required = false,
 }: {
   onClose: () => void;
   onChanged?: () => Promise<void> | void;
+  required?: boolean;
 }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -48,7 +50,7 @@ export function ChangePasswordModal({
   };
 
   return (
-    <Modal open={true} onClose={onClose} title="Changer mon mot de passe">
+    <Modal open={true} onClose={onClose} closable={!required} title="Changer mon mot de passe">
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
           Choisis un mot de passe personnel plus solide que le mot de passe d’installation.
@@ -81,9 +83,11 @@ export function ChangePasswordModal({
           />
         </div>
         <div className="flex justify-end gap-3">
-          <button onClick={onClose} className="rounded-xl border bg-background px-4 py-2 text-sm font-medium hover:bg-muted cursor-pointer">
-            Annuler
-          </button>
+          {!required && (
+            <button onClick={onClose} className="rounded-xl border bg-background px-4 py-2 text-sm font-medium hover:bg-muted cursor-pointer">
+              Annuler
+            </button>
+          )}
           <button
             onClick={() => void save()}
             disabled={saving}

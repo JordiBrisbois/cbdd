@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { Structure, Categorie, Personne, Fonction } from "../types";
 import { invoke } from "../lib/tauri";
 import { exportTableFile } from "../lib/export";
@@ -9,42 +9,52 @@ import { TableExportModal, type TableExportFormat, type TableExportScope } from 
 import { StructureModal } from "../modals/StructureModal";
 import toast from "react-hot-toast";
 import { useAuth } from "../lib/auth";
+import { useAsyncData } from "../hooks/useAsyncData";
+
+type StructureReferences = {
+  categories: Categorie[];
+  personnes: Personne[];
+  fonctions: Fonction[];
+};
 
 export function StructuresPage() {
   const { can } = useAuth();
-  const [items, setItems] = useState<Structure[]>([]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Structure | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [categories, setCategories] = useState<Categorie[]>([]);
-  const [catMap, setCatMap] = useState<Record<number, string>>({});
-  const [personnes, setPersonnes] = useState<Personne[]>([]);
-  const [fonctions, setFonctions] = useState<Fonction[]>([]);
   const canCreateStructure = can("structures.create");
-
-  useEffect(() => {
-    void invoke<Categorie[]>("lister_categories")
-      .then(cats => {
-        setCategories(cats);
-        const m: Record<number, string> = {};
-        cats.forEach(c => { if (c.id_categorie) m[c.id_categorie] = c.nom_categorie ?? ""; });
-        setCatMap(m);
-      })
-      .catch(() => setCategories([]));
-    void invoke<Personne[]>("lister_personnes").then(setPersonnes).catch((e) => toast.error(String(e)));
-    void invoke<Fonction[]>("lister_fonctions").then(setFonctions).catch((e) => toast.error(String(e)));
+  const loadStructures = useCallback(
+    () => invoke<Structure[]>("lister_structures", { recherche: search || undefined }),
+    [search],
+  );
+  const { data: items, loading, reload } = useAsyncData(loadStructures, [], {
+    errorMessage: "Impossible de charger les structures",
+  });
+  const loadReferences = useCallback(async (): Promise<StructureReferences> => {
+    const [categories, personnes, fonctions] = await Promise.allSettled([
+      invoke<Categorie[]>("lister_categories"),
+      invoke<Personne[]>("lister_personnes"),
+      invoke<Fonction[]>("lister_fonctions"),
+    ]);
+    return {
+      categories: categories.status === "fulfilled" ? categories.value : [],
+      personnes: personnes.status === "fulfilled" ? personnes.value : [],
+      fonctions: fonctions.status === "fulfilled" ? fonctions.value : [],
+    };
   }, []);
+  const { data: references } = useAsyncData<StructureReferences>(
+    loadReferences,
+    { categories: [], personnes: [], fonctions: [] },
+    { errorMessage: "Impossible de charger les données de référence" },
+  );
+  const { categories, personnes, fonctions } = references;
+  const catMap = useMemo(() => Object.fromEntries(
+    categories
+      .filter((category) => category.id_categorie != null)
+      .map((category) => [category.id_categorie as number, category.nom_categorie ?? ""]),
+  ), [categories]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const s = await invoke<Structure[]>("lister_structures", { recherche: search || undefined }).catch(() => []);
-    setItems(s);
-    setLoading(false);
-  }, [search]);
-  useEffect(() => { load(); }, [load]);
-
-  const config: TableConfig = useMemo(() => ({
+  const config: TableConfig<Structure> = useMemo(() => ({
     id: "structures",
     columns: [
       { key: "nom", label: "Nom" }, { key: "categorie", label: "Catégorie" }, { key: "service", label: "Service" },
@@ -54,11 +64,11 @@ export function StructuresPage() {
       { key: "site", label: "Site web" },
     ],
     sortAccessors: {
-      nom: s => s.nom as string ?? "", categorie: s => s.categorie as string ?? "", service: s => s.service as string ?? "",
-      reseau: s => s.reseau as string ?? "", partenaire: s => s.partenaire ? "Oui" : "Non",
-      adresse: s => s.adresse as string ?? "", cp: s => s.cp as string ?? "", commune: s => s.commune as string ?? "",
-      pays: s => s.pays as string ?? "", tel: s => s.tel as string ?? "", email: s => s.email as string ?? "",
-      site: s => s.site as string ?? "",
+      nom: s => s.nom_structure ?? "", categorie: s => String(s.id_categorie ?? ""), service: s => s.service_specifique ?? "",
+      reseau: s => s.reseau_subvention ?? "", partenaire: s => s.partenaire_direct ? "Oui" : "Non",
+      adresse: s => s.adresse_structure ?? "", cp: s => s.code_postal_structure ?? "", commune: s => s.commune_structure ?? "",
+      pays: s => s.pays ?? "", tel: s => s.telephone_general ?? "", email: s => s.email_general ?? "",
+      site: s => s.site_web ?? "",
     },
     stickyColumns: { widths: { nom: 140, categorie: 140 } },
   }), []);
@@ -81,24 +91,24 @@ export function StructuresPage() {
     }
   };
 
-  const exportStructures = (scope: TableExportScope, format: TableExportFormat) => {
+  const exportStructures = async (scope: TableExportScope, format: TableExportFormat) => {
     const exportConfig = scope === "current"
       ? getExportConfig("structures", config.columns)
       : { keysToExport: config.columns.map((column) => column.key), headers: config.columns.map((column) => column.label) };
     const rows = items.map(s => exportConfig.keysToExport.map((k: string) => {
       return mapStructureValue(s, k);
     }));
-    exportTableFile(exportConfig.headers, rows, `structures_${new Date().toISOString().slice(0, 10)}`, format);
+    await exportTableFile(exportConfig.headers, rows, `structures_${new Date().toISOString().slice(0, 10)}`, format);
     toast.success(`${items.length} structures exportées`);
   };
 
   return (
     <>
-      <DataTable config={config} data={items as unknown as Record<string, unknown>[]} loading={loading}
+      <DataTable config={config} data={items} loading={loading}
         renderers={{
           nom: (item) => <span className="font-medium">{(item.nom_structure as string) || "—"}</span>,
           categorie: (item) => {
-            const catId = (item as Record<string, unknown>).id_categorie as number | undefined;
+            const catId = item.id_categorie;
             return <span className="text-muted-foreground">{catId ? (catMap[catId] || "—") : "—"}</span>;
           },
           service: (item) => <span className="text-muted-foreground">{(item.service_specifique as string) || "—"}</span>,
@@ -112,7 +122,7 @@ export function StructuresPage() {
           email: (item) => <span className="text-muted-foreground">{(item.email_general as string) || "—"}</span>,
           site: (item) => <span className="text-muted-foreground">{(item.site_web as string) || "—"}</span>,
         }}
-        onRowClick={(item) => setSelected(item as unknown as Structure)}
+        onRowClick={setSelected}
         header={
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold tracking-tight">Répertoire des Structures</h1>
@@ -141,7 +151,7 @@ export function StructuresPage() {
         }
       />
       <TableExportModal open={showExportModal} onClose={() => setShowExportModal(false)} onConfirm={exportStructures} />
-      {selected && <StructureModal structure={selected} onClose={() => { setSelected(null); load(); }} categories={categories} personnes={personnes} fonctions={fonctions} />}
+      {selected && <StructureModal structure={selected} onClose={() => { setSelected(null); void reload().catch(() => {}); }} categories={categories} personnes={personnes} fonctions={fonctions} />}
     </>
   );
 }

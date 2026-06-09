@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { Reunion } from "../types";
 import { invoke } from "../lib/tauri";
 import { formatDate } from "../lib/format";
@@ -10,34 +10,32 @@ import { TableExportModal, type TableExportFormat, type TableExportScope } from 
 import { ReunionModal } from "../modals/ReunionModal";
 import toast from "react-hot-toast";
 import { useAuth } from "../lib/auth";
+import { useAsyncData } from "../hooks/useAsyncData";
 
 export function ReunionsPage() {
   const { can } = useAuth();
-  const [items, setItems] = useState<Reunion[]>([]);
   const [selected, setSelected] = useState<Reunion | null>(null);
   const [search, setSearch] = useState("");
   const [showExportModal, setShowExportModal] = useState(false);
-  const [loading, setLoading] = useState(false);
   const canCreateReunion = can("reunions.create");
+  const loadReunions = useCallback(
+    () => invoke<Reunion[]>("lister_reunions", { recherche: search || undefined }),
+    [search],
+  );
+  const { data: items, loading, reload } = useAsyncData(loadReunions, [], {
+    errorMessage: "Impossible de charger les réunions",
+  });
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const r = await invoke<Reunion[]>("lister_reunions", { recherche: search || undefined }).catch(() => []);
-    setItems(r);
-    setLoading(false);
-  }, [search]);
-  useEffect(() => { load(); }, [load]);
-
-  const config: TableConfig = useMemo(() => ({
+  const config: TableConfig<Reunion> = useMemo(() => ({
     id: "reunions",
     columns: [
       { key: "titre", label: "Titre" }, { key: "date", label: "Date" }, { key: "heure", label: "Heure" },
       { key: "lieu", label: "Lieu" }, { key: "organisme", label: "Organisme" }, { key: "notes", label: "Notes" },
     ],
     sortAccessors: {
-      titre: r => r.titre as string ?? "", date: r => r.date as string ?? "",
-      heure: r => r.heure as string ?? "", lieu: r => r.lieu as string ?? "",
-      organisme: r => String(r.nom_structure ?? r.organisme ?? ""), notes: r => r.notes as string ?? "",
+      titre: r => r.titre_reunion ?? "", date: r => r.date_reunion ?? "",
+      heure: r => r.heure_reunion ?? "", lieu: r => r.lieu_reunion ?? "",
+      organisme: r => r.nom_structure ?? "", notes: r => r.notes_commentaires ?? "",
     },
     stickyColumns: { widths: { titre: 160, date: 120, lieu: 140 } },
   }), []);
@@ -54,18 +52,18 @@ export function ReunionsPage() {
     }
   };
 
-  const exportReunions = (scope: TableExportScope, format: TableExportFormat) => {
+  const exportReunions = async (scope: TableExportScope, format: TableExportFormat) => {
     const exportConfig = scope === "current"
       ? getExportConfig("reunions", config.columns)
       : { keysToExport: config.columns.map((column) => column.key), headers: config.columns.map((column) => column.label) };
     const rows = items.map((reunion) => exportConfig.keysToExport.map((key) => mapReunionValue(reunion, key)));
-    exportTableFile(exportConfig.headers, rows, `reunions_${new Date().toISOString().slice(0, 10)}`, format);
+    await exportTableFile(exportConfig.headers, rows, `reunions_${new Date().toISOString().slice(0, 10)}`, format);
     toast.success(`${items.length} réunions exportées`);
   };
 
   return (
     <>
-      <DataTable config={config} data={items as unknown as Record<string, unknown>[]} loading={loading}
+      <DataTable config={config} data={items} loading={loading}
         renderers={{
           titre: (item) => <span className="font-medium">{(item.titre_reunion as string) || "—"}</span>,
           date: (item) => formatDate(item.date_reunion as string | null),
@@ -74,7 +72,7 @@ export function ReunionsPage() {
           organisme: (item) => <span className="text-muted-foreground">{(item.nom_structure as string) || "—"}</span>,
           notes: (item) => <span className="text-muted-foreground">{(item.notes_commentaires as string) || "—"}</span>,
         }}
-        onRowClick={(item) => setSelected(item as unknown as Reunion)}
+        onRowClick={setSelected}
         header={
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold tracking-tight">Suivi des Réunions</h1>
@@ -102,7 +100,7 @@ export function ReunionsPage() {
         }
       />
       <TableExportModal open={showExportModal} onClose={() => setShowExportModal(false)} onConfirm={exportReunions} />
-      {selected && <ReunionModal reunion={selected} onClose={() => { setSelected(null); load(); }} />}
+      {selected && <ReunionModal reunion={selected} onClose={() => { setSelected(null); void reload().catch(() => {}); }} />}
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import toast from "react-hot-toast";
 import type { Reunion, PresenceAvecDetails, Personne, ReunionInput, Structure } from "../types";
 import { invoke } from "../lib/tauri";
@@ -9,6 +9,7 @@ import { useEditLock } from "../hooks/useEditLock";
 import { Icon, Label, Field } from "../lib/ui";
 import { TableExportModal, type TableExportFormat, type TableExportScope } from "../components/TableExportModal";
 import { useAuth } from "../lib/auth";
+import { useAsyncData } from "../hooks/useAsyncData";
 
 const STATUTS = ["Présent", "Excusé", "Absent", "Invité"] as const;
 
@@ -24,9 +25,6 @@ export function ReunionModal({ reunion, onClose }: { reunion: Reunion; onClose: 
     notes_commentaires: reunion.notes_commentaires,
     original_updated_at: reunion.updated_at,
   });
-  const [presences, setPresences] = useState<PresenceAvecDetails[]>([]);
-  const [personnes, setPersonnes] = useState<Personne[]>([]);
-  const [structures, setStructures] = useState<Structure[]>([]);
   const [addPersonneId, setAddPersonneId] = useState<number | null>(null);
   const [addPersonSearch, setAddPersonSearch] = useState("");
   const [addRgpd, setAddRgpd] = useState(true);
@@ -42,6 +40,25 @@ export function ReunionModal({ reunion, onClose }: { reunion: Reunion; onClose: 
   const canUpdatePresence = can("presences.update");
   const canDeletePresence = can("presences.delete");
   const readOnlyReunion = lockBlocked || !canUpdateReunion;
+  const loadPresences = useCallback(() => {
+    if (!reunion.id_reunion || !canReadPresences) return Promise.resolve([]);
+    return invoke<PresenceAvecDetails[]>("lister_presences_reunion", { reunionId: reunion.id_reunion });
+  }, [canReadPresences, reunion.id_reunion]);
+  const { data: presences, reload: reloadPresences } = useAsyncData(loadPresences, [], {
+    errorMessage: "Impossible de charger les présences",
+  });
+  const loadStructures = useCallback(() => {
+    if (!canReadStructures) return Promise.resolve([]);
+    return invoke<Structure[]>("lister_structures");
+  }, [canReadStructures]);
+  const { data: structures } = useAsyncData(loadStructures, [], {
+    errorMessage: "Impossible de charger les structures",
+  });
+  const loadPersonnes = useCallback(() => invoke<Personne[]>("lister_personnes"), []);
+  const { data: personnes, reload: reloadPersonnes } = useAsyncData(loadPersonnes, [], {
+    errorMessage: "Impossible de charger les personnes",
+    immediate: false,
+  });
   const existingPresenceIds = useMemo(
     () => new Set(presences.map((presence) => presence.ref_personne).filter((id): id is number => typeof id === "number")),
     [presences],
@@ -76,25 +93,13 @@ export function ReunionModal({ reunion, onClose }: { reunion: Reunion; onClose: 
     return [nom, prenom].filter(Boolean).join(" ") || fullName(personne);
   };
 
-  const loadPresences = useCallback(() => {
-    if (reunion.id_reunion && canReadPresences) {
-      invoke<PresenceAvecDetails[]>("lister_presences_reunion", { reunionId: reunion.id_reunion }).then(setPresences).catch((e) => toast.error(String(e)));
-    }
-  }, [canReadPresences, reunion.id_reunion]);
-
-  useEffect(() => { loadPresences(); }, [loadPresences]);
-  useEffect(() => {
-    if (!canReadStructures) return;
-    invoke<Structure[]>("lister_structures").then(setStructures).catch((e) => toast.error(String(e)));
-  }, [canReadStructures]);
-
   const toggleRgpd = async (p: PresenceAvecDetails, value: boolean) => {
     if (lockBlocked || !canUpdatePresence) return;
     try {
       await invoke("sauvegarder_presence", {
         presence: { id_presence: p.id_presence, ref_reunion: reunion.id_reunion, ref_personne: p.ref_personne, statut_presence: p.statut_presence, souhaite_rester_en_bdd: value, notes_commentaires: p.notes_commentaires }
       });
-      loadPresences();
+      void reloadPresences().catch(() => {});
     } catch (e) { toast.error(String(e)); }
   };
 
@@ -104,7 +109,7 @@ export function ReunionModal({ reunion, onClose }: { reunion: Reunion; onClose: 
       await invoke("sauvegarder_presence", {
         presence: { id_presence: p.id_presence, ref_reunion: reunion.id_reunion, ref_personne: p.ref_personne, statut_presence: statut, souhaite_rester_en_bdd: p.souhaite_rester_en_bdd, notes_commentaires: p.notes_commentaires }
       });
-      loadPresences();
+      void reloadPresences().catch(() => {});
     } catch (e) { toast.error(String(e)); }
   };
 
@@ -119,7 +124,7 @@ export function ReunionModal({ reunion, onClose }: { reunion: Reunion; onClose: 
       setAddPersonSearch("");
       setAddRgpd(true);
       setAddStatut("Présent");
-      loadPresences();
+      void reloadPresences().catch(() => {});
     } catch (e) { toast.error(String(e)); }
   };
 
@@ -142,7 +147,7 @@ export function ReunionModal({ reunion, onClose }: { reunion: Reunion; onClose: 
     }
   };
 
-  const exportPresences = (scope: TableExportScope, format: TableExportFormat) => {
+  const exportPresences = async (scope: TableExportScope, format: TableExportFormat) => {
     const currentHeaders = ["Participant", "Statut", "Souhaite rester en BDD"];
     const currentRows = presences.map(p => [
       `${p.prenom_personne ?? ""} ${p.nom_personne ?? ""}`.trim(),
@@ -161,7 +166,7 @@ export function ReunionModal({ reunion, onClose }: { reunion: Reunion; onClose: 
     ]);
     const headers = scope === "current" ? currentHeaders : rawHeaders;
     const rows = scope === "current" ? currentRows : rawRows;
-    exportTableFile(headers, rows, `presences_reunion_${reunion.titre_reunion ?? "reunion"}_${new Date().toISOString().slice(0, 10)}`, format);
+    await exportTableFile(headers, rows, `presences_reunion_${reunion.titre_reunion ?? "reunion"}_${new Date().toISOString().slice(0, 10)}`, format);
     toast.success(`${presences.length} présences exportées`);
   };
 
@@ -211,7 +216,7 @@ export function ReunionModal({ reunion, onClose }: { reunion: Reunion; onClose: 
                   <Icon name="download" className="size-3.5" /> Exporter
                 </button>
               )}
-              <button onClick={() => { if (!personnes.length) invoke<Personne[]>("lister_personnes").then(setPersonnes).catch((e) => toast.error(String(e))); }}
+              <button onClick={() => { if (!personnes.length) void reloadPersonnes().catch(() => {}); }}
                 disabled={lockBlocked || !canCreatePresence}
                 className="flex items-center gap-1 rounded-lg border px-3 py-1 text-xs font-medium hover:bg-muted cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">
                 <Icon name="plus" className="size-3.5" /> Ajouter
@@ -251,8 +256,12 @@ export function ReunionModal({ reunion, onClose }: { reunion: Reunion; onClose: 
                       <td className="px-3 py-2">
                         <button onClick={async () => {
                           if (lockBlocked || !canDeletePresence) return;
-                          await invoke("supprimer_presence", { id: p.id_presence }).catch((e) => toast.error(String(e)));
-                          loadPresences();
+                          try {
+                            await invoke("supprimer_presence", { id: p.id_presence });
+                            void reloadPresences().catch(() => {});
+                          } catch (error) {
+                            toast.error(String(error));
+                          }
                         }} disabled={lockBlocked || !canDeletePresence} className="cursor-pointer text-red-500 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"><Icon name="trash" className="size-4" /></button>
                       </td>
                     </tr>

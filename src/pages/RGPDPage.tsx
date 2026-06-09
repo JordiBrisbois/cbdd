@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { Categorie, Personne, PersonneRefusBDDPresence } from "../types";
 import { invoke } from "../lib/tauri";
 import { Icon } from "../lib/ui";
@@ -6,20 +6,35 @@ import { DataTable, type TableConfig } from "../components/DataTable";
 import toast from "react-hot-toast";
 import { useAuth } from "../lib/auth";
 import { ContactModal } from "../modals/ContactModal";
+import { useAsyncData } from "../hooks/useAsyncData";
 
 export function RGPDPage() {
   const { can } = useAuth();
-  const [items, setItems] = useState<Personne[]>([]);
-  const [refusBDD, setRefusBDD] = useState<PersonneRefusBDDPresence[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [categories, setCategories] = useState<Categorie[]>([]);
   const [selectedPerson, setSelectedPerson] = useState<Personne | null>(null);
-  const [loading, setLoading] = useState(false);
   const canUpdateRgpd = can("rgpd.update");
   const canAnonymize = can("rgpd.anonymize");
   const canBulkAnonymize = can("rgpd.anonymize.bulk");
+  const loadRgpd = useCallback(async () => {
+    const [items, refusBDD, categories] = await Promise.all([
+      invoke<Personne[]>("get_personnes_rgpd"),
+      invoke<PersonneRefusBDDPresence[]>("lister_personnes_refus_bdd_presence"),
+      invoke<Categorie[]>("lister_categories"),
+    ]);
+    return { items, refusBDD, categories };
+  }, []);
+  const { data: rgpdData, loading, reload: load } = useAsyncData(
+    loadRgpd,
+    { items: [], refusBDD: [], categories: [] } as {
+      items: Personne[];
+      refusBDD: PersonneRefusBDDPresence[];
+      categories: Categorie[];
+    },
+    { errorMessage: "Impossible de charger les données RGPD" },
+  );
+  const { items, refusBDD, categories } = rgpdData;
 
-  const refusConfig: TableConfig = useMemo(() => ({
+  const refusConfig: TableConfig<PersonneRefusBDDPresence> = useMemo(() => ({
     id: "rgpd-refus",
     columns: [
       { key: "select", label: "" },
@@ -37,7 +52,7 @@ export function RGPDPage() {
     pageSizes: [50, 100, 250, 500, 1000],
   }), []);
 
-  const itemsConfig: TableConfig = useMemo(() => ({
+  const itemsConfig: TableConfig<Personne> = useMemo(() => ({
     id: "rgpd-traiter",
     columns: [
       { key: "nom", label: "Nom" }, { key: "prenom", label: "Prénom" },
@@ -46,7 +61,7 @@ export function RGPDPage() {
     ],
     sortAccessors: {
       nom: p => p.nom as string ?? "", prenom: p => p.prenom as string ?? "",
-      consentement: p => p.consentement ? "Oui" : "Non", statut: p => p.statut as string ?? "",
+      consentement: p => p.consentement_rgpd ? "Oui" : "Non", statut: p => p.statut_compte ?? "",
       actions: () => "",
     },
     stickyColumns: { widths: { nom: 140, prenom: 132 } },
@@ -59,27 +74,13 @@ export function RGPDPage() {
     [items, refusalIds]
   );
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const [rgpd, refus, cats] = await Promise.all([
-      invoke<Personne[]>("get_personnes_rgpd").catch(() => []),
-      invoke<PersonneRefusBDDPresence[]>("lister_personnes_refus_bdd_presence").catch(() => []),
-      invoke<Categorie[]>("lister_categories").catch(() => []),
-    ]);
-    setItems(rgpd);
-    setRefusBDD(refus);
-    setCategories(cats);
-    setLoading(false);
-  }, []);
-  useEffect(() => { load(); }, [load]);
-
   const anonymiser = async (id: number) => {
     if (!canAnonymize) return;
     if (confirm("Anonymiser cette personne ? Cette action est irréversible.")) {
       try {
         await invoke("anonymiser_personne", { personneId: id });
         toast.success("Personne anonymisée");
-        load();
+        void load().catch(() => {});
       } catch (e) {
         toast.error(String(e));
       }
@@ -90,7 +91,7 @@ export function RGPDPage() {
     try {
       await invoke("maj_statut_rgpd", { personneId: id, statut });
       toast.success("Statut mis à jour");
-      load();
+      void load().catch(() => {});
     } catch (e) {
       toast.error(String(e));
     }
@@ -113,14 +114,13 @@ export function RGPDPage() {
     if (!canBulkAnonymize) return;
     if (selectedIds.size === 0) { toast.error("Aucune personne sélectionnée"); return; }
     if (confirm(`Anonymiser ${selectedIds.size} personne(s) ? Cette action est irréversible.`)) {
-      setLoading(true);
       try {
         const ids = Array.from(selectedIds);
-        const count = await invoke<number>("anonymiser_personnes_en_masse", { personneIds: ids }).catch(() => 0);
+        const count = await invoke<number>("anonymiser_personnes_en_masse", { personneIds: ids });
         toast.success(`${count} personne(s) anonymisée(s)`);
         setSelectedIds(new Set());
-        load();
-      } catch (e) { toast.error(String(e)); setLoading(false); }
+        await load();
+      } catch (e) { toast.error(String(e)); }
     }
   };
 
@@ -136,14 +136,12 @@ export function RGPDPage() {
     }
 
     if (confirm(`Anonymiser ${ids.length} personne(s) à traiter ? Cette action supprimera les données personnelles et les affiliations, tout en gardant l'historique de présence sous forme anonyme.`)) {
-      setLoading(true);
       try {
-        const count = await invoke<number>("anonymiser_personnes_en_masse", { personneIds: ids }).catch(() => 0);
+        const count = await invoke<number>("anonymiser_personnes_en_masse", { personneIds: ids });
         toast.success(`${count} personne(s) anonymisée(s)`);
         await load();
       } catch (e) {
         toast.error(String(e));
-        setLoading(false);
       }
     }
   };
@@ -169,7 +167,7 @@ export function RGPDPage() {
           <h1 className="text-2xl font-bold tracking-tight">Gestion RGPD</h1>
           <p className="mt-1 text-sm text-muted-foreground">Gestion du consentement et anonymisation forte des personnes qui ne souhaitent plus figurer dans la base.</p>
         </div>
-        <button onClick={load} disabled={loading}
+        <button onClick={() => void load().catch(() => {})} disabled={loading}
           className="flex items-center gap-1.5 rounded-xl border bg-background px-4 py-2 text-sm font-medium hover:bg-muted cursor-pointer disabled:opacity-50">
           <Icon name="refresh" className="size-4" /> Actualiser
         </button>
@@ -198,7 +196,7 @@ export function RGPDPage() {
             </div>
           </div>
 
-          <DataTable config={refusConfig} data={refusBDD as unknown as Record<string, unknown>[]} loading={loading}
+          <DataTable config={refusConfig} data={refusBDD} loading={loading}
             renderers={{
               select: (item) => (
                 <label className="flex items-center justify-center">
@@ -251,7 +249,7 @@ export function RGPDPage() {
         L’anonymisation forte supprime les données personnelles, efface les affiliations et conserve uniquement un historique de présence non nominatif.
       </p>
 
-      <DataTable config={itemsConfig} data={otherItems as unknown as Record<string, unknown>[]} loading={loading}
+      <DataTable config={itemsConfig} data={otherItems} loading={loading}
         renderers={{
           nom: (item) => <span className="font-medium">{(item.nom as string) || "—"}</span>,
           prenom: (item) => <span>{(item.prenom as string) || "—"}</span>,
@@ -278,7 +276,7 @@ export function RGPDPage() {
             );
           },
         }}
-        onRowClick={(item) => setSelectedPerson(item as unknown as Personne)}
+        onRowClick={setSelectedPerson}
         header={undefined}
       />
 
@@ -288,7 +286,7 @@ export function RGPDPage() {
           categories={categories}
           onClose={() => {
             setSelectedPerson(null);
-            void load();
+            void load().catch(() => {});
           }}
         />
       )}

@@ -88,6 +88,12 @@ export default function App() {
   }, [checkDb, refreshSession]);
 
   useEffect(() => {
+    if (session?.is_authenticated && session.must_change_password) {
+      setShowChangePassword(true);
+    }
+  }, [session?.is_authenticated, session?.must_change_password]);
+
+  useEffect(() => {
     if (!dbStatus?.error) return;
     toast.error(dbStatus.error, { id: "db-status-error" });
   }, [dbStatus?.error]);
@@ -167,7 +173,11 @@ export default function App() {
     <AuthContext.Provider value={authValue}>
       {showLogin && <LoginScreen onLogin={login} canContinueAsPublic={session.anonymous_access_enabled} />}
       {showChangePassword && session?.is_authenticated && (
-        <ChangePasswordModal onClose={() => setShowChangePassword(false)} onChanged={refreshSession} />
+        <ChangePasswordModal
+          required={session.must_change_password}
+          onClose={() => setShowChangePassword(false)}
+          onChanged={refreshSession}
+        />
       )}
       {!showLogin && (
         <div className="flex h-screen overflow-hidden">

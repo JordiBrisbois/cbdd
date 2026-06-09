@@ -4,6 +4,8 @@ use crate::db;
 use crate::excel_export;
 use crate::models::*;
 use chrono::Utc;
+use once_cell::sync::Lazy;
+use rand_core::{OsRng, RngCore};
 use rusqlite::OptionalExtension;
 use tauri::AppHandle;
 
@@ -74,6 +76,16 @@ pub const ANONYMIZED_STATUS: &str = "Anonymisé";
 pub const ANONYMIZED_LABEL: &str = "Participant anonymisé";
 pub const EDIT_LOCK_MINUTES: i64 = 10;
 
+static EDIT_LOCK_TOKEN: Lazy<String> = Lazy::new(|| {
+    let mut bytes = [0u8; 16];
+    OsRng.fill_bytes(&mut bytes);
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+});
+
+pub fn edit_lock_token() -> &'static str {
+    EDIT_LOCK_TOKEN.as_str()
+}
+
 pub fn machine_label() -> String {
     std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))
@@ -124,20 +136,20 @@ pub fn ensure_resource_not_locked_by_other(
     )
     .map_err(|e| e.to_string())?;
 
-    let (user_id, _) = auth::current_actor_label(conn)?;
+    let token = edit_lock_token();
     let existing = conn
         .query_row(
-            "SELECT Holder_User_Id, Holder_Label
+            "SELECT Holder_Token, Holder_Label
              FROM T_EditLocks
              WHERE Resource_Type = ? AND Resource_Id = ?",
             rusqlite::params![resource_type, resource_id],
-            |row| Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, String>(1)?)),
+            |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, String>(1)?)),
         )
         .optional()
         .map_err(|e| e.to_string())?;
 
-    if let Some((existing_user_id, existing_label)) = existing {
-        if existing_user_id != user_id {
+    if let Some((existing_token, existing_label)) = existing {
+        if existing_token.as_deref() != Some(token) {
             return Err(format!(
                 "Cette fiche est actuellement verrouillée par {}. Fermez ou laissez expirer l'édition avant de poursuivre.",
                 existing_label
@@ -215,44 +227,7 @@ pub fn ensure_presence_context_mutable(
 
 pub fn anonymize_person(conn: &rusqlite::Connection, personne_id: i64) -> Result<(), String> {
     ensure_resource_not_locked_by_other(conn, "personnes", personne_id)?;
-    conn.execute(
-        "UPDATE T_Personnes SET
-            Civilite = NULL,
-            Nom = ?,
-            Prenom = NULL,
-            Email_Prive = NULL,
-            Telephone_Prive = NULL,
-            Adresse_Privee = NULL,
-            Code_Postal_Prive = NULL,
-            Commune_Privee = NULL,
-            Pays = NULL,
-            Consentement_RGPD = 0,
-            Date_Consentement = NULL,
-            Statut_Compte = ?,
-            Notes_Commentaires = NULL,
-            Date_Creation = NULL,
-            Updated_At = datetime('now')
-         WHERE ID_Personne = ?",
-        rusqlite::params![ANONYMIZED_LABEL, ANONYMIZED_STATUS, personne_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    conn.execute(
-        "DELETE FROM T_Affiliations WHERE Ref_Personne = ?",
-        rusqlite::params![personne_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    conn.execute(
-        "UPDATE T_Presences
-         SET Notes_Commentaires = NULL,
-             Souhaite_Rester_En_BDD = 0
-         WHERE Ref_Personne = ?",
-        rusqlite::params![personne_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    Ok(())
+    crate::services::people::anonymize_person(conn, personne_id)
 }
 
 // ── ROW MAPPERS ──

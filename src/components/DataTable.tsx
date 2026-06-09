@@ -11,10 +11,10 @@ import { useSort } from "../hooks/useSort";
 import { useStickyOffsets, stickyCol } from "../lib/tableLayout";
 import { extractText } from "../lib/text";
 
-export interface TableConfig {
+export interface TableConfig<T = Record<string, unknown>> {
   id: string;
   columns: { key: string; label: string }[];
-  sortAccessors: Record<string, (item: Record<string, unknown>) => string>;
+  sortAccessors: Record<string, (item: T) => string>;
   stickyColumns?: { widths: Record<string, number> };
   pagination?: boolean;
   pageSizes?: number[];
@@ -22,18 +22,19 @@ export interface TableConfig {
   emptyText?: string;
 }
 
-export interface DataTableProps {
-  config: TableConfig;
-  data: Record<string, unknown>[];
-  renderers: Record<string, (item: Record<string, unknown>) => ReactNode>;
-  onRowClick?: (item: Record<string, unknown>) => void;
+export interface DataTableProps<T> {
+  config: TableConfig<T>;
+  data: T[];
+  renderers: Record<string, (item: T) => ReactNode>;
+  onRowClick?: (item: T) => void;
+  getRowId?: (item: T, index: number) => string | number;
   header?: ReactNode;
   toolbarLeft?: ReactNode;
   rowClassName?: string;
   loading?: boolean;
 }
 
-export function DataTable({ config, data, renderers, onRowClick, header, toolbarLeft, rowClassName, loading }: DataTableProps) {
+export function DataTable<T>({ config, data, renderers, onRowClick, getRowId, header, toolbarLeft, rowClassName, loading }: DataTableProps<T>) {
   const colVisibility = useColumnVisibility(config.id, config.columns);
   const sticky = useStickyColumn(config.id);
   const columnWidths = useColumnWidths(config.id);
@@ -236,7 +237,7 @@ export function DataTable({ config, data, renderers, onRowClick, header, toolbar
     );
   };
 
-  const renderCell = (colKey: string, item: Record<string, unknown>) => {
+  const renderCell = (colKey: string, item: T) => {
     const stickyStyle = getStickyStyle(colKey, false);
     const cell = renderers[colKey]?.(item) ?? <span className="text-muted-foreground">—</span>;
     const text = extractText(cell);
@@ -257,8 +258,11 @@ export function DataTable({ config, data, renderers, onRowClick, header, toolbar
     );
   };
 
-  const getId = (item: Record<string, unknown>, index: number): string | number =>
-    (item.id_personne ?? item.id_structure ?? item.id_reunion ?? item.id_categorie ?? `row-${index}`) as string | number;
+  const getId = (item: T, index: number): string | number => {
+    if (getRowId) return getRowId(item, index);
+    const row = item as Record<string, unknown>;
+    return (row.id_personne ?? row.id_structure ?? row.id_reunion ?? row.id_categorie ?? row._id ?? `row-${index}`) as string | number;
+  };
 
   return (
     <div className="flex flex-col gap-4">

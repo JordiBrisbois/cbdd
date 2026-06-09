@@ -76,20 +76,20 @@ crvi-bdd/
 │   │   ├── AffiliationModal.tsx
 │   │   ├── ReunionModal.tsx
 │   │   └── CategoriesModal.tsx
-│   ├── lib/                      # Utilitaires
+│   ├── lib/                      # Auth, appels Tauri, exports et utilitaires
 │   │   ├── auth.tsx              # Système d'authentification
 │   │   ├── columns.ts            # Hooks colonnes (visibilité, ordre, sticky)
-│   │   ├── utils.tsx             # Fonctions utilitaires + UI
 │   │   └── ui.tsx                # Composants UI de base
 │   └── types.ts                  # Types TypeScript
 ├── src-tauri/
 │   ├── src/
 │   │   ├── main.rs               # Point d'entrée Tauri
 │   │   ├── lib.rs                # Enregistrement des commandes
-│   │   ├── commands.rs           # Commandes Tauri (CRUD + business logic)
+│   │   ├── commands/             # Adaptateurs Tauri, lectures et orchestration
+│   │   ├── services/             # Mutations métier SQLite testables sans Tauri
 │   │   ├── models.rs             # Structs Rust ↔ DB
-│   │   ├── auth.rs               # Authentification & permissions
-│   │   ├── backups.rs            # Backups/restaurations SQLite locales
+│   │   ├── auth/                 # Authentification, sessions et permissions
+│   │   ├── backups/              # Backups/restaurations SQLite locales
 │   │   ├── excel_export.rs       # Reconstruction Excel historique
 │   │   └── db.rs                 # Connexion SQLite
 │   └── Cargo.toml
@@ -408,23 +408,24 @@ T_Presets            -- Presets recherche (ID_Preset, Nom, Table, Colonnes, Cond
 | `lib/` | Logique métier partagée |
 | `lib/auth.ts` | Hook `useAuth()`, session, permissions |
 | `lib/columns.ts` | Hooks `useColumnVisibility`, `useStickyColumn`, `useColumnOrder` |
-| `lib/utils.tsx` | Fonctions utilitaires + composants UI (SortHeader, ColumnToggle, etc.) |
+| `lib/` | Auth frontend, appels Tauri, exports et utilitaires |
 
 **Backend** (`src-tauri/src/`)
 
 | Fichier | Rôle |
 |---------|------|
-| `commands.rs` | Commandes Tauri CRUD + admin + verrous + backups |
+| `commands/` | Commandes Tauri, contrôles d'accès et orchestration |
+| `services/` | Mutations métier transactionnelles testables sans Tauri |
 | `models.rs` | Structs Rust ↔ sérialisation JSON ↔ DB |
-| `auth.rs` | Authentification, sessions, rôles, permissions |
-| `backups.rs` | Création, rotation, vérification et restauration des backups SQLite |
+| `auth/` | Authentification, sessions, rôles, permissions |
+| `backups/` | Création, rotation, vérification et restauration des backups SQLite |
 | `excel_export.rs` | Reconstruction d'un classeur Excel historique depuis SQLite |
 | `db.rs` | Connexion SQLite, path persistence |
 | `lib.rs` | Point d'entrée, enregistrement des commandes |
 
 ### Ajouter une nouvelle commande
 
-1. **Rust** (`commands.rs`) : implémenter la fonction avec `#[tauri::command]`
+1. **Rust** (`commands/`) : implémenter l'adaptateur `#[tauri::command]` et placer les mutations réutilisables dans `services/`
 2. **Rust** (`lib.rs`) : l'ajouter dans `generate_handler![]`
 3. **TypeScript** (`types.ts`) : ajouter les types si nécessaire
 4. **Frontend** : appeler via `invoke("ma_commande", { args })`

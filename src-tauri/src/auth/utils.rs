@@ -4,6 +4,9 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn require_permission(conn: &Connection, permission: &str) -> Result<CurrentSession, String> {
     let session = super::session::get_current_session(conn)?;
+    if session.is_authenticated && session.must_change_password {
+        return Err("Vous devez changer votre mot de passe avant de continuer.".into());
+    }
     let is_admin = session
         .role_codes
         .iter()

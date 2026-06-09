@@ -44,6 +44,7 @@ pub fn save_role(conn: &Connection, role: RoleInput) -> Result<RoleDetails, Stri
     }
 
     let permission_codes = dedupe_strings(role.permission_codes);
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
 
     let role_id = if let Some(id) = role.id_role {
         let (code_role, nom_role, is_system): (String, String, bool) = conn
@@ -58,7 +59,7 @@ pub fn save_role(conn: &Connection, role: RoleInput) -> Result<RoleDetails, Stri
             return Err("Le rôle Administrateur a déjà tous les accès".into());
         }
 
-        conn.execute(
+        tx.execute(
             "UPDATE T_Roles SET Nom_Role = ? WHERE ID_Role = ?",
             params![
                 if is_system {
@@ -75,7 +76,7 @@ pub fn save_role(conn: &Connection, role: RoleInput) -> Result<RoleDetails, Stri
         let base_code = sanitize_role_code(&role.nom_role);
         let mut code_role = base_code.clone();
         let mut index = 2;
-        while conn
+        while tx
             .query_row(
                 "SELECT 1 FROM T_Roles WHERE Code_Role = ?",
                 params![code_role],
@@ -89,15 +90,16 @@ pub fn save_role(conn: &Connection, role: RoleInput) -> Result<RoleDetails, Stri
             index += 1;
         }
 
-        conn.execute(
+        tx.execute(
             "INSERT INTO T_Roles (Code_Role, Nom_Role, Is_System) VALUES (?, ?, 0)",
             params![code_role, role.nom_role.trim()],
         )
         .map_err(|e| e.to_string())?;
-        conn.last_insert_rowid()
+        tx.last_insert_rowid()
     };
 
-    replace_role_permissions(conn, role_id, &permission_codes)?;
+    replace_role_permissions_impl(&tx, role_id, &permission_codes)?;
+    tx.commit().map_err(|e| e.to_string())?;
     get_role_impl(conn, role_id)
 }
 
@@ -140,7 +142,7 @@ fn get_role_impl(conn: &Connection, role_id: i64) -> Result<RoleDetails, String>
     })
 }
 
-fn replace_role_permissions(
+fn replace_role_permissions_impl(
     conn: &Connection,
     role_id: i64,
     permission_codes: &[String],
@@ -166,7 +168,6 @@ fn replace_role_permissions(
         )
         .map_err(|e| e.to_string())?;
     }
-
     Ok(())
 }
 

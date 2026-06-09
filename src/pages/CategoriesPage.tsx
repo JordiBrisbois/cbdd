@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { Categorie, Personne, PersonneCategorieDetaillee, Structure } from "../types";
 import { invoke } from "../lib/tauri";
 import { formatCivilite } from "../lib/format";
@@ -15,12 +15,11 @@ import { CategoriesModal } from "../modals/CategoriesModal";
 import { CopyValuesModal } from "../components/CopyValuesModal";
 import toast from "react-hot-toast";
 import { useAuth } from "../lib/auth";
+import { useAsyncData } from "../hooks/useAsyncData";
 
 export function CategoriesPage() {
   const { can } = useAuth();
-  const [categories, setCategories] = useState<Categorie[]>([]);
   const [selectedCat, setSelectedCat] = useState<number | null>(null);
-  const [contacts, setContacts] = useState<PersonneCategorieDetaillee[]>([]);
   const [search, setSearch] = useState("");
   const [showCatModal, setShowCatModal] = useState(false);
   const [showCopyModal, setShowCopyModal] = useState(false);
@@ -28,12 +27,23 @@ export function CategoriesPage() {
   const [editingCat, setEditingCat] = useState<{ id?: number; nom: string } | null>(null);
   const [contactModal, setContactModal] = useState<Personne | null>(null);
   const [structureModal, setStructureModal] = useState<Structure | null>(null);
-  const [loading, setLoading] = useState(false);
-  const catFetchIdRef = useRef(0);
-  const peopleFetchIdRef = useRef(0);
   const canManageCategories = can("categories.create") || can("categories.update") || can("categories.delete");
+  const loadCategories = useCallback(() => invoke<Categorie[]>("lister_categories"), []);
+  const { data: categories, reload: reloadCategories } = useAsyncData(loadCategories, [], {
+    errorMessage: "Impossible de charger les catégories",
+  });
+  const loadContacts = useCallback(() => {
+    if (!selectedCat) return Promise.resolve([]);
+    return invoke<PersonneCategorieDetaillee[]>("lister_personnes_categorie_detaillee", {
+      categorieId: selectedCat,
+      recherche: search || undefined,
+    });
+  }, [search, selectedCat]);
+  const { data: contacts, loading, reload: reloadContacts } = useAsyncData(loadContacts, [], {
+    errorMessage: "Impossible de charger les contacts de la catégorie",
+  });
 
-  const config: TableConfig = useMemo(() => ({
+  const config: TableConfig<PersonneCategorieDetaillee> = useMemo(() => ({
     id: "categories-contacts",
     columns: [
       { key: "civ", label: "Civ." }, { key: "nom", label: "Nom" }, { key: "prenom", label: "Prénom" },
@@ -58,86 +68,48 @@ export function CategoriesPage() {
     stickyColumns: { widths: { civ: 80, nom: 140, prenom: 132 } },
   }), []);
 
-  const load = async () => {
-    if (!selectedCat) {
-      setContacts([]);
-      return;
-    }
-
-    const id = ++peopleFetchIdRef.current;
-    setLoading(true);
-    const people = await invoke<PersonneCategorieDetaillee[]>("lister_personnes_categorie_detaillee", { categorieId: selectedCat, recherche: search || undefined }).catch(() => []);
-    if (id === peopleFetchIdRef.current) {
-      setContacts(people);
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const id = ++catFetchIdRef.current;
-    void invoke<Categorie[]>("lister_categories")
-      .then((cats) => {
-        if (id === catFetchIdRef.current) setCategories(cats);
-      })
-      .catch(() => {
-        if (id === catFetchIdRef.current) setCategories([]);
-      });
-  }, []);
-
-  useEffect(() => {
-    if (!selectedCat) {
-      setContacts([]);
-      setLoading(false);
-      return;
-    }
-
-    const id = ++peopleFetchIdRef.current;
-    setLoading(true);
-    void invoke<PersonneCategorieDetaillee[]>("lister_personnes_categorie_detaillee", { categorieId: selectedCat, recherche: search || undefined })
-      .then((data) => {
-        if (id === peopleFetchIdRef.current) setContacts(data);
-      })
-      .catch(() => {
-        if (id === peopleFetchIdRef.current) setContacts([]);
-      })
-      .finally(() => {
-        if (id === peopleFetchIdRef.current) setLoading(false);
-      });
-  }, [search, selectedCat]);
-
   const saveCat = async () => {
     if (!editingCat?.nom.trim()) return;
-    await invoke("sauvegarder_categorie", { id: editingCat.id || null, nom: editingCat.nom }).catch(() => {});
-    toast.success(editingCat.id ? "Catégorie modifiée" : "Catégorie ajoutée");
-    setEditingCat(null);
-    setShowCatModal(false);
-    const id = ++catFetchIdRef.current;
-    void invoke<Categorie[]>("lister_categories")
-      .then((cats) => {
-        if (id === catFetchIdRef.current) setCategories(cats);
-      })
-      .catch(() => {});
+    try {
+      await invoke("sauvegarder_categorie", { id: editingCat.id || null, nom: editingCat.nom });
+      toast.success(editingCat.id ? "Catégorie modifiée" : "Catégorie ajoutée");
+      setEditingCat(null);
+      setShowCatModal(false);
+      await reloadCategories();
+    } catch (error) {
+      toast.error(String(error));
+    }
   };
 
   const delCat = async (id: number) => {
     if (confirm("Supprimer cette catégorie ?")) {
-      await invoke("supprimer_categorie", { id }).catch(() => {});
-      toast.success("Catégorie supprimée");
-      if (selectedCat === id) setSelectedCat(null);
-      const fetchId = ++catFetchIdRef.current;
-      void invoke<Categorie[]>("lister_categories")
-        .then((cats) => {
-          if (fetchId === catFetchIdRef.current) setCategories(cats);
-        })
-        .catch(() => {});
+      try {
+        await invoke("supprimer_categorie", { id });
+        toast.success("Catégorie supprimée");
+        if (selectedCat === id) setSelectedCat(null);
+        await reloadCategories();
+      } catch (error) {
+        toast.error(String(error));
+      }
     }
   };
 
   const selectedCatName = categories.find(c => c.id_categorie === selectedCat)?.nom_categorie || "";
 
+  const openContactModal = async (personId: number) => {
+    try {
+      setContactModal(await invoke<Personne>("get_personne", { id: personId }));
+    } catch (error) {
+      toast.error(String(error));
+    }
+  };
+
   const openStructureModal = async (structureId: number) => {
-    const s = await invoke<Structure>("get_structure", { id: structureId }).catch(() => null);
-    if (s) setStructureModal(s);
+    try {
+      setStructureModal(await invoke<Structure>("get_structure", { id: structureId }));
+    } catch (error) {
+      toast.error(String(error));
+    }
   };
 
   const buildCategoryCopyPayload = (mode: string) => {
@@ -177,12 +149,12 @@ export function CategoriesPage() {
     }
   };
 
-  const exportCategoryContacts = (scope: TableExportScope, format: TableExportFormat) => {
+  const exportCategoryContacts = async (scope: TableExportScope, format: TableExportFormat) => {
     const exportConfig = scope === "current"
       ? getExportConfig("categories-contacts", config.columns)
       : { keysToExport: config.columns.map((column) => column.key), headers: config.columns.map((column) => column.label) };
     const rows = contacts.map((contact) => exportConfig.keysToExport.map((key) => mapCategoryContactValue(contact, key)));
-    exportTableFile(exportConfig.headers, rows, `categories_${selectedCatName}_${new Date().toISOString().slice(0, 10)}`, format);
+    await exportTableFile(exportConfig.headers, rows, `categories_${selectedCatName}_${new Date().toISOString().slice(0, 10)}`, format);
     toast.success(`${contacts.length} contacts exportés`);
   };
 
@@ -237,15 +209,15 @@ export function CategoriesPage() {
           {contacts.length === 0 ? (
             <div className="rounded-xl border bg-card p-8 text-center text-muted-foreground shadow-sm">Aucun contact dans cette catégorie</div>
           ) : (
-            <DataTable config={config} data={contacts as unknown as Record<string, unknown>[]} loading={loading}
+            <DataTable config={config} data={contacts} loading={loading}
               renderers={{
-                civ: (item) => (item as Record<string, unknown>).type_entree === "structure"
+                civ: (item) => item.type_entree === "structure"
                   ? <span className="text-lg" title="Structure">🏢</span>
                   : formatCivilite(item.civilite as string | null),
-                nom: (item) => (item as Record<string, unknown>).type_entree === "structure"
+                nom: (item) => item.type_entree === "structure"
                   ? <span className="italic text-muted-foreground">Structure sans référent</span>
                   : <span className="font-medium">{(item.nom as string) || "—"}</span>,
-                prenom: (item) => (item as Record<string, unknown>).type_entree === "structure"
+                prenom: (item) => item.type_entree === "structure"
                   ? <span className="text-muted-foreground italic">—</span>
                   : <span>{(item.prenom as string) || "—"}</span>,
                 email: (item) => <span className="text-muted-foreground">{(item.email_prive as string) || "—"}</span>,
@@ -255,35 +227,35 @@ export function CategoriesPage() {
                 commune: (item) => (item.commune_privee as string) || "—",
                 pays: (item) => (item.pays as string) || "—",
                 statut: (item) => {
-                  if ((item as Record<string, unknown>).type_entree === "structure") {
+                  if (item.type_entree === "structure") {
                     return <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-sky-100 text-sky-800">Structure</span>;
                   }
                   const s = item.statut_compte as string | null;
                   return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${s === "Actif" ? "bg-emerald-100 text-emerald-800" : s === "Anonymisé" ? "bg-gray-200 text-gray-600" : "bg-amber-100 text-amber-800"}`}>{s || "—"}</span>;
                 },
-                rgpd: (item) => (item as Record<string, unknown>).type_entree === "structure"
+                rgpd: (item) => item.type_entree === "structure"
                   ? <span className="text-xs text-muted-foreground italic">N/A</span>
                   : <span className={`inline-block size-3 rounded-full ${item.consentement_rgpd ? "bg-emerald-500" : "bg-red-400"}`} />,
                 structure: (item) => <GroupedCell value={item.structures as string | null} />,
-                fonction: (item) => (item as Record<string, unknown>).type_entree === "structure"
+                fonction: (item) => item.type_entree === "structure"
                   ? <span>{(item.fonctions as string) || "—"}</span>
                   : <GroupedCell value={item.fonctions as string | null} />,
                 categorie: (item) => <GroupedCell value={item.categories as string | null} max={1} />,
                 emailPro: (item) => <span className="text-muted-foreground"><GroupedCell value={item.emails_pro as string | null} /></span>,
-                titre: (item) => (item as Record<string, unknown>).type_entree === "structure"
+                titre: (item) => item.type_entree === "structure"
                   ? <span>{(item.titres as string) || "—"}</span>
                   : <GroupedCell value={item.titres as string | null} />,
                 telDirect: (item) => <GroupedCell value={item.tels_directs as string | null} />,
                 gsmPro: (item) => <GroupedCell value={item.gsms_pro as string | null} />,
               }}
               onRowClick={(item) => {
-                if ((item as Record<string, unknown>).type_entree === "structure") {
+                if (item.type_entree === "structure") {
                   if (can("structures.update")) {
-                    const structureId = Math.abs((item as unknown as PersonneCategorieDetaillee).id_personne);
+                    const structureId = Math.abs(item.id_personne);
                     openStructureModal(structureId);
                   }
                 } else {
-                  setContactModal(item as unknown as Personne);
+                  void openContactModal(item.id_personne);
                 }
               }}
               header={undefined}
@@ -292,8 +264,8 @@ export function CategoriesPage() {
         </div>
       )}
 
-      {contactModal && <ContactModal personne={contactModal} onClose={() => { setContactModal(null); void load(); }} categories={categories} />}
-      {structureModal && <StructureModal structure={structureModal} onClose={() => { setStructureModal(null); void load(); }} categories={categories} />}
+      {contactModal && <ContactModal personne={contactModal} onClose={() => { setContactModal(null); void reloadContacts().catch(() => {}); }} categories={categories} />}
+      {structureModal && <StructureModal structure={structureModal} onClose={() => { setStructureModal(null); void reloadContacts().catch(() => {}); }} categories={categories} />}
       {showCopyModal && (
         <CopyValuesModal
           title="Copier les emails"

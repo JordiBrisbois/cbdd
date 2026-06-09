@@ -41,7 +41,7 @@ pub fn maj_statut_rgpd(app: AppHandle, personne_id: i64, statut: String) -> Resu
     auth::require_permission(&conn, "rgpd.update")?;
     ensure_resource_not_locked_by_other(&conn, "personnes", personne_id)?;
     conn.execute(
-        "UPDATE T_Personnes SET Statut_Compte = ?, Updated_At = datetime('now') WHERE ID_Personne = ?",
+        "UPDATE T_Personnes SET Statut_Compte = ?, Updated_At = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE ID_Personne = ?",
         rusqlite::params![statut, personne_id],
     )
     .map_err(|e| e.to_string())?;
@@ -107,10 +107,19 @@ pub fn anonymiser_personnes_en_masse(
     let conn = db::get_conn(&app)?;
     auth::require_permission(&conn, "rgpd.anonymize.bulk")?;
     let mut count = 0i64;
+    let mut failures = Vec::new();
     for id in personne_ids {
-        if anonymize_person(&conn, id).is_ok() {
-            count += 1;
+        match anonymize_person(&conn, id) {
+            Ok(()) => count += 1,
+            Err(error) => failures.push(format!("{id}: {error}")),
         }
+    }
+    if !failures.is_empty() {
+        return Err(format!(
+            "{count} personne(s) anonymisée(s), {} échec(s): {}",
+            failures.len(),
+            failures.join(" | ")
+        ));
     }
     Ok(count)
 }
